@@ -6,9 +6,13 @@ export async function bootstrap<T>(directory: string, cb: () => Promise<T>) {
     directory,
     init: InstanceBootstrap,
     fn: async () => {
-      const result = await cb()
-      await Instance.dispose()
-      return result
+      // Ensure we always dispose instance state, even on errors,
+      // so the CLI does not hang due to lingering watchers/subscriptions.
+      try {
+        return await cb()
+      } finally {
+        await Instance.dispose()
+      }
     },
   })
 }
