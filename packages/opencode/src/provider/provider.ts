@@ -1,4 +1,5 @@
 import z from "zod"
+import fuzzysort from "fuzzysort"
 import path from "path"
 import { Config } from "../config/config"
 import { mergeDeep, sortBy } from "remeda"
@@ -522,9 +523,44 @@ export namespace Provider {
     })
 
     const provider = s.providers[providerID]
-    if (!provider) throw new ModelNotFoundError({ providerID, modelID })
+    if (!provider) {
+      let suggestions: string[] = []
+      const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, "")
+      if (!modelID || modelID.trim() === "") {
+        // Treat single-token input as an unqualified model; search across all providers' models.
+        const q = normalize(providerID)
+        const entries: { combo: string; norm: string }[] = []
+        for (const [pid, prov] of Object.entries(s.providers)) {
+          for (const mid of Object.keys(prov.info.models)) {
+            entries.push({ combo: pid + "/" + mid, norm: normalize(mid) })
+          }
+        }
+        const byNorm = fuzzysort.go(q, entries as any, { limit: 5, key: "norm" }).map((r: any) => r.obj.combo)
+        const combos = entries.map((e) => e.combo)
+        const byRaw = fuzzysort.go(providerID, combos, { limit: 5 }).map((r) => r.target)
+        suggestions = Array.from(new Set([...byNorm, ...byRaw])).slice(0, 3)
+      } else {
+        const providerSuggestions = fuzzysort
+          .go(providerID, Object.keys(s.providers), { limit: 3 })
+          .map((r) => r.target + "/" + modelID)
+        suggestions = providerSuggestions
+      }
+      throw new ModelNotFoundError({ providerID, modelID, suggestions })
+    }
     const info = provider.info.models[modelID]
-    if (!info) throw new ModelNotFoundError({ providerID, modelID })
+    if (!info) {
+      const candidates = Object.keys(provider.info.models)
+      // Normalize punctuation differences like '-' vs '.' by stripping non-alphanumerics
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+      const corpus = candidates.map((raw) => ({ raw, norm: normalize(raw) }))
+      const query = normalize(modelID)
+      const results = fuzzysort.go(query, corpus as any, { limit: 5, key: "norm" })
+      const ranked = results.map((r) => ("obj" in r ? (r as any).obj.raw : (r as any).target)) as string[]
+      const fallback = fuzzysort.go(modelID, candidates, { limit: 5 }).map((r) => r.target)
+      const merged = Array.from(new Set([...ranked, ...fallback]))
+      const suggestions = merged.slice(0, 3).map((m) => providerID + "/" + m)
+      throw new ModelNotFoundError({ providerID, modelID, suggestions })
+    }
     const sdk = await getSDK(provider.info, info)
 
     try {
@@ -658,6 +694,7 @@ export namespace Provider {
     z.object({
       providerID: z.string(),
       modelID: z.string(),
+      suggestions: z.array(z.string()).optional(),
     }),
   )
 
