@@ -952,7 +952,6 @@ export type ProviderConfig = {
     [key: string]: {
       id?: string
       name?: string
-      target?: string
       release_date?: string
       attachment?: boolean
       reasoning?: boolean
@@ -2698,7 +2697,6 @@ export type ProviderListResponses = {
         [key: string]: {
           id: string
           name: string
-          target: string
           release_date: string
           attachment: boolean
           reasoning: boolean
