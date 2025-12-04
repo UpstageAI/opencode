@@ -380,7 +380,7 @@ export namespace Provider {
       providerID: provider.id,
       name: model.name,
       api: {
-        id: model.id,
+        id: model.target ?? model.id,
         url: provider.api!,
         npm: model.provider?.npm ?? provider.npm ?? provider.id,
       },
@@ -513,7 +513,7 @@ export namespace Provider {
         const parsedModel: Model = {
           id: modelID,
           api: {
-            id: model.id ?? existing?.api.id ?? modelID,
+            id: model.target ?? model.id ?? existing?.api.id ?? modelID,
             npm: model.provider?.npm ?? provider.npm ?? existing?.api.npm ?? providerID,
             url: provider?.api ?? existing?.api.url,
           },
