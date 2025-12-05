@@ -90,11 +90,7 @@ export const BashTool = Tool.define("bash", async () => {
     parameters: z.object({
       command: z.string().describe("The command to execute"),
       timeout: z.number().describe("Optional timeout in milliseconds").optional(),
-      workdir: z
-        .string()
-        .default(Instance.directory)
-        .describe("The working directory to execute the command in")
-        .optional(),
+      workdir: z.string().default(Instance.directory).describe("The working directory to execute the command in"),
       description: z
         .string()
         .describe(
@@ -102,6 +98,7 @@ export const BashTool = Tool.define("bash", async () => {
         ),
     }),
     async execute(params, ctx) {
+      const cwd = params.workdir || Instance.directory
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
       }
@@ -111,6 +108,37 @@ export const BashTool = Tool.define("bash", async () => {
         throw new Error("Failed to parse command")
       }
       const agent = await Agent.get(ctx.agent)
+
+      const checkExternalDirectory = async (dir: string) => {
+        if (Filesystem.contains(Instance.directory, dir)) return
+        const title = `This command references paths outside of ${Instance.directory}`
+        if (agent.permission.external_directory === "ask") {
+          await Permission.ask({
+            type: "external_directory",
+            pattern: [dir, path.join(dir, "*")],
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: ctx.callID,
+            title,
+            metadata: {
+              command: params.command,
+            },
+          })
+        } else if (agent.permission.external_directory === "deny") {
+          throw new Permission.RejectedError(
+            ctx.sessionID,
+            "external_directory",
+            ctx.callID,
+            {
+              command: params.command,
+            },
+            `${title} so this command is not allowed to be executed.`,
+          )
+        }
+      }
+
+      await checkExternalDirectory(cwd)
+
       const permissions = agent.permission.bash
 
       const askPatterns = new Set<string>()
@@ -137,6 +165,7 @@ export const BashTool = Tool.define("bash", async () => {
           for (const arg of command.slice(1)) {
             if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
             const resolved = await $`realpath ${arg}`
+              .cwd(cwd)
               .quiet()
               .nothrow()
               .text()
@@ -149,32 +178,7 @@ export const BashTool = Tool.define("bash", async () => {
                   ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
                   : resolved
 
-              if (!Filesystem.contains(Instance.directory, normalized)) {
-                const parentDir = path.dirname(normalized)
-                if (agent.permission.external_directory === "ask") {
-                  await Permission.ask({
-                    type: "external_directory",
-                    pattern: [parentDir, path.join(parentDir, "*")],
-                    sessionID: ctx.sessionID,
-                    messageID: ctx.messageID,
-                    callID: ctx.callID,
-                    title: `This command references paths outside of ${Instance.directory}`,
-                    metadata: {
-                      command: params.command,
-                    },
-                  })
-                } else if (agent.permission.external_directory === "deny") {
-                  throw new Permission.RejectedError(
-                    ctx.sessionID,
-                    "external_directory",
-                    ctx.callID,
-                    {
-                      command: params.command,
-                    },
-                    `This command references paths outside of ${Instance.directory} so it is not allowed to be executed.`,
-                  )
-                }
-              }
+              await checkExternalDirectory(path.dirname(normalized))
             }
           }
         }
@@ -220,7 +224,7 @@ export const BashTool = Tool.define("bash", async () => {
 
       const proc = spawn(params.command, {
         shell,
-        cwd: params.workdir || Instance.directory,
+        cwd,
         env: {
           ...process.env,
         },
