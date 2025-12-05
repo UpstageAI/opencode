@@ -92,7 +92,8 @@ export const BashTool = Tool.define("bash", async () => {
       timeout: z.number().describe("Optional timeout in milliseconds").optional(),
       workdir: z
         .string()
-        .describe(`The working directory to execute the command in, defaults to ${Instance.directory}`),
+        .describe(`The working directory to execute the command in, defaults to ${Instance.directory}`)
+        .optional(),
       description: z
         .string()
         .describe(
