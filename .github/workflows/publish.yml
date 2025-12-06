@@ -159,7 +159,6 @@ jobs:
         if: startsWith(matrix.settings.host, 'ubuntu')
 
       - name: Build and upload artifacts
-        if: false
         uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -173,10 +172,10 @@ jobs:
           APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
         with:
           projectPath: packages/tauri
-          uploadWorkflowArtifacts: true
+          # uploadWorkflowArtifacts: true
           tauriScript: ${{ (startsWith(matrix.settings.host, 'ubuntu') && 'cargo tauri') || '' }}
           args: --target ${{ matrix.settings.target }}
           updaterJsonPreferNsis: true
-          releaseDraft: true
-          tagName: ${{ inputs.version }}
-          releaseName: ${{ inputs.version }}
+          # releaseDraft: true
+          # tagName: ${{ inputs.version }}
+          # releaseName: ${{ inputs.version }}
