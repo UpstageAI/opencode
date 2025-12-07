@@ -181,7 +181,7 @@
         }
       }
     },
-    "/pty/{id}": {
+    "/pty/{ptyID}": {
       "get": {
         "operationId": "pty.get",
         "parameters": [
@@ -194,7 +194,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "ptyID",
             "schema": {
               "type": "string"
             },
@@ -237,7 +237,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "ptyID",
             "schema": {
               "type": "string"
             },
@@ -306,7 +306,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "ptyID",
             "schema": {
               "type": "string"
             },
@@ -338,7 +338,7 @@
         }
       }
     },
-    "/pty/{id}/connect": {
+    "/pty/{ptyID}/connect": {
       "get": {
         "operationId": "pty.connect",
         "parameters": [
@@ -351,7 +351,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "ptyID",
             "schema": {
               "type": "string"
             },
@@ -751,7 +751,7 @@
         }
       }
     },
-    "/session/{id}": {
+    "/session/{sessionID}": {
       "get": {
         "operationId": "session.get",
         "parameters": [
@@ -764,7 +764,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string",
               "pattern": "^ses.*"
@@ -818,7 +818,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string",
               "pattern": "^ses.*"
@@ -872,7 +872,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -928,7 +928,7 @@
         }
       }
     },
-    "/session/{id}/children": {
+    "/session/{sessionID}/children": {
       "get": {
         "operationId": "session.children",
         "parameters": [
@@ -941,7 +941,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string",
               "pattern": "^ses.*"
@@ -987,7 +987,7 @@
         }
       }
     },
-    "/session/{id}/todo": {
+    "/session/{sessionID}/todo": {
       "get": {
         "operationId": "session.todo",
         "parameters": [
@@ -1000,7 +1000,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1046,7 +1046,7 @@
         }
       }
     },
-    "/session/{id}/init": {
+    "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
         "parameters": [
@@ -1059,7 +1059,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1124,7 +1124,7 @@
         }
       }
     },
-    "/session/{id}/fork": {
+    "/session/{sessionID}/fork": {
       "post": {
         "operationId": "session.fork",
         "parameters": [
@@ -1137,7 +1137,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string",
               "pattern": "^ses.*"
@@ -1175,7 +1175,7 @@
         }
       }
     },
-    "/session/{id}/abort": {
+    "/session/{sessionID}/abort": {
       "post": {
         "operationId": "session.abort",
         "parameters": [
@@ -1188,7 +1188,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1230,7 +1230,7 @@
         }
       }
     },
-    "/session/{id}/share": {
+    "/session/{sessionID}/share": {
       "post": {
         "operationId": "session.share",
         "parameters": [
@@ -1243,7 +1243,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1296,7 +1296,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string",
               "pattern": "^ses.*"
@@ -1339,7 +1339,7 @@
         }
       }
     },
-    "/session/{id}/diff": {
+    "/session/{sessionID}/diff": {
       "get": {
         "operationId": "session.diff",
         "parameters": [
@@ -1352,7 +1352,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1406,7 +1406,7 @@
         }
       }
     },
-    "/session/{id}/summarize": {
+    "/session/{sessionID}/summarize": {
       "post": {
         "operationId": "session.summarize",
         "parameters": [
@@ -1419,7 +1419,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1480,7 +1480,7 @@
         }
       }
     },
-    "/session/{id}/message": {
+    "/session/{sessionID}/message": {
       "get": {
         "operationId": "session.messages",
         "parameters": [
@@ -1493,7 +1493,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1569,7 +1569,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1689,7 +1689,7 @@
         }
       }
     },
-    "/session/{id}/message/{messageID}": {
+    "/session/{sessionID}/message/{messageID}": {
       "get": {
         "operationId": "session.message",
         "parameters": [
@@ -1702,7 +1702,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1766,7 +1766,7 @@
         }
       }
     },
-    "/session/{id}/prompt_async": {
+    "/session/{sessionID}/prompt_async": {
       "post": {
         "operationId": "session.prompt_async",
         "parameters": [
@@ -1779,7 +1779,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1880,7 +1880,7 @@
         }
       }
     },
-    "/session/{id}/command": {
+    "/session/{sessionID}/command": {
       "post": {
         "operationId": "session.command",
         "parameters": [
@@ -1893,7 +1893,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -1976,7 +1976,7 @@
         }
       }
     },
-    "/session/{id}/shell": {
+    "/session/{sessionID}/shell": {
       "post": {
         "operationId": "session.shell",
         "parameters": [
@@ -1989,7 +1989,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -2062,7 +2062,7 @@
         }
       }
     },
-    "/session/{id}/revert": {
+    "/session/{sessionID}/revert": {
       "post": {
         "operationId": "session.revert",
         "parameters": [
@@ -2075,7 +2075,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -2137,7 +2137,7 @@
         }
       }
     },
-    "/session/{id}/unrevert": {
+    "/session/{sessionID}/unrevert": {
       "post": {
         "operationId": "session.unrevert",
         "parameters": [
@@ -2150,7 +2150,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -2192,9 +2192,9 @@
         }
       }
     },
-    "/session/{id}/permissions/{permissionID}": {
+    "/session/{sessionID}/permissions/{permissionID}": {
       "post": {
-        "operationId": "postSession:idPermissions:permissionID",
+        "operationId": "permission.respond",
         "parameters": [
           {
             "in": "query",
@@ -2205,7 +2205,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "sessionID",
             "schema": {
               "type": "string"
             },
@@ -2597,7 +2597,7 @@
         }
       }
     },
-    "/provider/{id}/oauth/authorize": {
+    "/provider/{providerID}/oauth/authorize": {
       "post": {
         "operationId": "provider.oauth.authorize",
         "parameters": [
@@ -2610,7 +2610,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "providerID",
             "schema": {
               "type": "string"
             },
@@ -2659,7 +2659,7 @@
         }
       }
     },
-    "/provider/{id}/oauth/callback": {
+    "/provider/{providerID}/oauth/callback": {
       "post": {
         "operationId": "provider.oauth.callback",
         "parameters": [
@@ -2672,7 +2672,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "providerID",
             "schema": {
               "type": "string"
             },
@@ -3942,7 +3942,7 @@
         }
       }
     },
-    "/auth/{id}": {
+    "/auth/{providerID}": {
       "put": {
         "operationId": "auth.set",
         "parameters": [
@@ -3955,7 +3955,7 @@
           },
           {
             "in": "path",
-            "name": "id",
+            "name": "providerID",
             "schema": {
               "type": "string"
             },
