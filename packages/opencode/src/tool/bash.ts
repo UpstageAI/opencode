@@ -78,11 +78,7 @@ const getShell = lazy(() => {
 
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define("bash", async () => {
-<<<<<<< HEAD
-  const shell = getShell()
-=======
   const shell = Shell.acceptable()
->>>>>>> dev
   log.info("bash tool using shell", { shell })
 
   return {
