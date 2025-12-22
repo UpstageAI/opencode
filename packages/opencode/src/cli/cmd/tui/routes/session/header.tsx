@@ -2,7 +2,7 @@ import { type Accessor, createMemo, Match, Show, Switch } from "solid-js"
 import { useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
-import { SplitBorder } from "@tui/component/border"
+import { EmptyBorder, SplitBorder } from "@tui/component/border"
 import type { Session } from "@opencode-ai/sdk/v2"
 import { useKeybind } from "../../context/keybind"
 
@@ -28,47 +28,84 @@ export function Header() {
   return (
     <box flexShrink={0}>
       <box
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={1}
-        {...SplitBorder}
         border={["left"]}
         borderColor={theme.border}
-        flexShrink={0}
-        backgroundColor={theme.backgroundPanel}
+        customBorderChars={{
+          ...EmptyBorder,
+          vertical: "┃",
+        }}
+        // backgroundColor={theme.backgroundPanel}
       >
-        <Switch>
-          <Match when={session()?.parentID}>
-            <box flexDirection="row" gap={2}>
-              <text fg={theme.text}>
-                <b>Subagent session</b>
-              </text>
-              <text fg={theme.text}>
-                Prev <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle_reverse")}</span>
-              </text>
-              <text fg={theme.text}>
-                Next <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle")}</span>
-              </text>
-              <box flexGrow={1} flexShrink={1} />
-              <Show when={showShare()}>
-                <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                  /share{" "}
+        <box
+          // paddingTop={1}
+          // paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={1}
+          // {...SplitBorder}
+          // border={["left"]}
+          // borderColor={theme.border}
+          flexShrink={0}
+          flexGrow={1}
+          backgroundColor={theme.backgroundPanel}
+        >
+          <Switch>
+            <Match when={session()?.parentID}>
+              <box flexDirection="row" gap={2}>
+                <text fg={theme.text}>
+                  <b>Subagent session</b>
                 </text>
-              </Show>
-            </box>
-          </Match>
-          <Match when={true}>
-            <box flexDirection="row" justifyContent="space-between" gap={1}>
-              <Title session={session} />
-              <Show when={showShare()}>
-                <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                  /share{" "}
+                <text fg={theme.text}>
+                  Prev <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle_reverse")}</span>
                 </text>
-              </Show>
-            </box>
-          </Match>
-        </Switch>
+                <text fg={theme.text}>
+                  Next <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle")}</span>
+                </text>
+                <box flexGrow={1} flexShrink={1} />
+                <Show when={showShare()}>
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                    /share{" "}
+                  </text>
+                </Show>
+              </box>
+            </Match>
+            <Match when={true}>
+              <box flexDirection="row" justifyContent="space-between" gap={1}>
+                <Title session={session} />
+                <Show when={showShare()}>
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                    /share{" "}
+                  </text>
+                </Show>
+              </box>
+            </Match>
+          </Switch>
+        </box>
+      </box>
+      <box
+        height={1}
+        border={["left"]}
+        borderColor={theme.border}
+        customBorderChars={{
+          ...EmptyBorder,
+          vertical: theme.backgroundElement.a !== 0 ? "╹" : " ",
+        }}
+      >
+        <box
+          height={1}
+          border={["bottom"]}
+          borderColor={theme.backgroundElement}
+          customBorderChars={
+            theme.backgroundElement.a !== 0
+              ? {
+                  ...EmptyBorder,
+                  horizontal: "▀",
+                }
+              : {
+                  ...EmptyBorder,
+                  horizontal: " ",
+                }
+          }
+        />
       </box>
     </box>
   )
