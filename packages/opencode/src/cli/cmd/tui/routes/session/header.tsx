@@ -30,22 +30,13 @@ export function Header() {
 
   return (
     <box flexShrink={0}>
-      {/*<box
-        height={1}
-        border={["top"]}
-        borderColor={theme.backgroundPanel}
-        customBorderChars={{
-          ...EmptyBorder,
-          horizontal: "▄",
-        }}
-      />*/}
-      {/*<box
+      <box
         height={1}
         border={["left"]}
         borderColor={theme.border}
         customBorderChars={{
           ...EmptyBorder,
-          vertical: theme.backgroundPanel.a !== 0 ? "╹" : " ",
+          vertical: theme.backgroundPanel.a !== 0 ? "╻" : " ",
         }}
       >
         <box
@@ -56,7 +47,7 @@ export function Header() {
             theme.backgroundPanel.a !== 0
               ? {
                   ...EmptyBorder,
-                  horizontal: "▀",
+                  horizontal: "▄",
                 }
               : {
                   ...EmptyBorder,
@@ -64,7 +55,7 @@ export function Header() {
                 }
           }
         />
-      </box>*/}
+      </box>
       <box
         border={["left"]}
         borderColor={theme.border}
