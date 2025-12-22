@@ -999,7 +999,7 @@ export function Prompt(props: PromptProps) {
               </box>
             </Match>
           </Switch>
-          <box gap={2} flexDirection="row">
+          <box gap={2} flexDirection="row" marginLeft="auto">
             <Switch>
               <Match when={store.mode === "normal"}>
                 <Show when={wide()}>
