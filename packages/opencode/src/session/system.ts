@@ -14,7 +14,6 @@ import PROMPT_POLARIS from "./prompt/polaris.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_ANTHROPIC_SPOOF from "./prompt/anthropic_spoof.txt"
-import PROMPT_COMPACTION from "./prompt/compaction.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import type { Provider } from "@/provider/provider"
@@ -117,43 +116,5 @@ export namespace SystemPrompt {
         .then((x) => "Instructions from: " + p + "\n" + x),
     )
     return Promise.all(found).then((result) => result.filter(Boolean))
-  }
-
-  export async function skills(agentName?: string) {
-    const all = await Skill.all()
-    if (all.length === 0) return []
-
-    // Filter skills by agent permission if agent name provided
-    let filtered = all
-    if (agentName) {
-      const { Agent } = await import("../agent/agent")
-      const { Wildcard } = await import("../util/wildcard")
-      const agent = await Agent.get(agentName)
-      if (agent) {
-        const permissions = agent.permission.skill
-        filtered = all.filter((skill) => {
-          const action = Wildcard.all(skill.id, permissions)
-          return action !== "deny"
-        })
-      }
-    }
-
-    if (filtered.length === 0) return []
-
-    const lines = [
-      "You have access to skills listed in `<available_skills>`. When a task matches a skill's description, use the skill tool to load detailed instructions.",
-      "",
-      "<available_skills>",
-    ]
-    for (const skill of filtered) {
-      lines.push("  <skill>")
-      lines.push(`    <id>${skill.id}</id>`)
-      lines.push(`    <name>${skill.name}</name>`)
-      lines.push(`    <description>${skill.description}</description>`)
-      lines.push("  </skill>")
-    }
-    lines.push("</available_skills>")
-
-    return [lines.join("\n")]
   }
 }
