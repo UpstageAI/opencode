@@ -2922,6 +2922,9 @@ export type SessionPromptData = {
       [key: string]: boolean
     }
     system?: string
+    thinking?: {
+      effort: "default" | "medium" | "high"
+    }
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
@@ -3105,6 +3108,9 @@ export type SessionPromptAsyncData = {
       [key: string]: boolean
     }
     system?: string
+    thinking?: {
+      effort: "default" | "medium" | "high"
+    }
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {

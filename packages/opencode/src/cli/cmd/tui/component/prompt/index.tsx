@@ -166,13 +166,19 @@ export function Prompt(props: PromptProps) {
     if (!props.disabled) input.cursorColor = theme.text
   })
 
+  const lastUserMessage = createMemo(() => {
+    if (!props.sessionID) return undefined
+    const messages = sync.data.message[props.sessionID]
+    if (!messages) return undefined
+    return messages.findLast((m) => m.role === "user")
+  })
+
   const [store, setStore] = createStore<{
     prompt: PromptInfo
     mode: "normal" | "shell"
     extmarkToPartIndex: Map<number, number>
     interrupt: number
     placeholder: number
-    effort: MessageV2.Thinking["effort"]
   }>({
     placeholder: Math.floor(Math.random() * PLACEHOLDERS.length),
     prompt: {
@@ -182,7 +188,27 @@ export function Prompt(props: PromptProps) {
     mode: "normal",
     extmarkToPartIndex: new Map(),
     interrupt: 0,
-    effort: "default",
+  })
+
+  // Derive model, agent, and effort from last user message
+  createEffect(() => {
+    const msg = lastUserMessage()
+    if (!msg) return
+
+    // Set agent from last message
+    if (msg.agent) {
+      local.agent.set(msg.agent)
+    }
+
+    // Set model from last message
+    if (msg.model) {
+      local.model.set(msg.model)
+    }
+
+    // Set effort from last message
+    if (msg.thinking?.effort) {
+      local.effort.set(msg.thinking.effort)
+    }
   })
 
   command.register(() => {
@@ -513,7 +539,6 @@ export function Prompt(props: PromptProps) {
         parts: [],
       })
       setStore("extmarkToPartIndex", new Map())
-      setStore("effort", "default")
     },
     submit() {
       submit()
@@ -591,6 +616,8 @@ export function Prompt(props: PromptProps) {
         arguments: args.join(" "),
         agent: local.agent.current().name,
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+        // TODO: allow reasoning to affect command invocations too
+        // thinking: { effort: store.effort },
         messageID,
       })
     } else {
@@ -600,6 +627,7 @@ export function Prompt(props: PromptProps) {
         messageID,
         agent: local.agent.current().name,
         model: selectedModel,
+        thinking: local.effort.current() !== "default" ? { effort: local.effort.current() } : undefined,
         parts: [
           {
             id: Identifier.ascending("part"),
@@ -847,10 +875,7 @@ export function Prompt(props: PromptProps) {
                 }
                 if (keybind.match("effort_cycle", e)) {
                   e.preventDefault()
-                  const levels: MessageV2.Thinking["effort"][] = ["default", "medium", "high"]
-                  const currentIndex = levels.indexOf(store.effort)
-                  const nextIndex = (currentIndex + 1) % levels.length
-                  setStore("effort", levels[nextIndex])
+                  local.effort.cycle()
                   return
                 }
                 if (store.mode === "normal") autocomplete.onKeyDown(e)
@@ -968,10 +993,10 @@ export function Prompt(props: PromptProps) {
                     {local.model.parsed().model}
                   </text>
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                  <Show when={store.effort !== "default"}>
+                  <Show when={local.effort.current() !== "default"}>
                     <text fg={theme.textMuted}>·</text>
                     <text>
-                      <span style={{ fg: theme.warning, bold: true }}>{store.effort}</span>
+                      <span style={{ fg: theme.warning, bold: true }}>{local.effort.current()}</span>
                     </text>
                   </Show>
                 </box>

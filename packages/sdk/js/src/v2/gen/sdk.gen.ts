@@ -1227,6 +1227,9 @@ export class Session extends HeyApiClient {
         [key: string]: boolean
       }
       system?: string
+      thinking?: {
+        effort: "default" | "medium" | "high"
+      }
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1244,6 +1247,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "noReply" },
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1313,6 +1317,9 @@ export class Session extends HeyApiClient {
         [key: string]: boolean
       }
       system?: string
+      thinking?: {
+        effort: "default" | "medium" | "high"
+      }
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1330,6 +1337,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "noReply" },
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
