@@ -288,8 +288,12 @@ export namespace ProviderTransform {
         }
 
       case "@ai-sdk/anthropic":
-        // TODO: map to thinking budgets
-        return {}
+        return {
+          thinking: {
+            type: "enabled",
+            budgetTokens: thinking.effort === "medium" ? 16000 : 31999,
+          },
+        }
 
       case "@ai-sdk/amazon-bedrock":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/amazon-bedrock
@@ -422,6 +426,7 @@ export namespace ProviderTransform {
 
   export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
     switch (model.api.npm) {
+      case "@ai-sdk/github-copilot":
       case "@ai-sdk/openai":
       case "@ai-sdk/azure":
         return {
