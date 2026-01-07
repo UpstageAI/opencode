@@ -14,7 +14,7 @@ describe("Truncate", () => {
 
       expect(result.truncated).toBe(true)
       expect(result.content).toContain("truncated...")
-      expect(result.outputPath).toBeDefined()
+      if (result.truncated) expect(result.outputPath).toBeDefined()
     })
 
     test("returns content unchanged when under limits", async () => {
@@ -82,12 +82,13 @@ describe("Truncate", () => {
       const result = await Truncate.output(lines, { maxLines: 10 })
 
       expect(result.truncated).toBe(true)
+      expect(result.content).toContain("The tool call succeeded but the output was truncated")
+      expect(result.content).toContain("Grep")
+      if (!result.truncated) throw new Error("expected truncated")
       expect(result.outputPath).toBeDefined()
       expect(result.outputPath).toContain("tool_")
-      expect(result.content).toContain("The tool output was too large")
-      expect(result.content).toContain("Grep")
 
-      const written = await Bun.file(result.outputPath!).text()
+      const written = await Bun.file(result.outputPath).text()
       expect(written).toBe(lines)
     })
 
@@ -116,7 +117,8 @@ describe("Truncate", () => {
       const result = await Truncate.output(content)
 
       expect(result.truncated).toBe(false)
-      expect(result.outputPath).toBeUndefined()
+      if (result.truncated) throw new Error("expected not truncated")
+      expect("outputPath" in result).toBe(false)
     })
   })
 

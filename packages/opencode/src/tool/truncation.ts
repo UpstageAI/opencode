@@ -12,11 +12,7 @@ export namespace Truncate {
   export const DIR = path.join(Global.Path.data, "tool-output")
   const RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-  export interface Result {
-    content: string
-    truncated: boolean
-    outputPath?: string
-  }
+  export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
 
   export interface Options {
     maxLines?: number

@@ -248,7 +248,7 @@ describe("tool.bash truncation", () => {
         )
         expect((result.metadata as any).truncated).toBe(true)
         expect(result.output).toContain("truncated")
-        expect(result.output).toContain("The tool output was too large")
+        expect(result.output).toContain("The tool call succeeded but the output was truncated")
       },
     })
   })
@@ -268,7 +268,7 @@ describe("tool.bash truncation", () => {
         )
         expect((result.metadata as any).truncated).toBe(true)
         expect(result.output).toContain("truncated")
-        expect(result.output).toContain("The tool output was too large")
+        expect(result.output).toContain("The tool call succeeded but the output was truncated")
       },
     })
   })
