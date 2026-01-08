@@ -57,13 +57,6 @@ export const ToolbarSession: Component<ComponentProps<"header">> = ({ class: cla
 
   return (
     <header class={`flex absolute inset-0 ${className}`} {...props}>
-      <button
-        type="button"
-        class="xl:hidden w-12 shrink-0 flex items-center justify-center border-r border-border-weak-base hover:bg-surface-raised-base-hover active:bg-surface-raised-base-active transition-colors"
-        onClick={layout.mobileSidebar.toggle}
-      >
-        <Icon name="menu" size="small" />
-      </button>
       <div class="flex items-center justify-between gap-4 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <div class="flex items-center gap-2 min-w-0">
           <div class="flex items-center gap-2 min-w-0">

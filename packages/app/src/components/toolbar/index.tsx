@@ -26,7 +26,7 @@ export const Toolbar: Component<ComponentProps<"div">> = ({ class: className, ..
       {...props}
     >
       <TooltipKeybind
-        class="shrink-0 relative z-10"
+        class="shrink-0 relative z-10 xl:block hidden"
         placement="bottom"
         title="Toggle sidebar"
         keybind={command.keybind("sidebar.toggle")}
@@ -56,7 +56,18 @@ export const Toolbar: Component<ComponentProps<"div">> = ({ class: className, ..
           </div>
         </Button>
       </TooltipKeybind>
-      {/* Portal mount target - content rendered here from DirectoryLayout */}
+
+      <Button
+        variant="ghost"
+        size="normal"
+        class="group/sidebar-toggle shrink-0 text-left justify-center align-middle rounded-lg px-1.5 xl:hidden relative z-10"
+        onClick={layout.mobileSidebar.toggle}
+      >
+        <div class="relative -ml-px flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
+          <Icon name="menu" size="small" />
+        </div>
+      </Button>
+
       <div id={TOOLBAR_PORTAL_ID} class="contents" />
     </div>
   )
