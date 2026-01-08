@@ -22,7 +22,7 @@ export function SessionLspIndicator() {
   return (
     <Show when={lspStats().total > 0}>
       <Tooltip placement="top" value={tooltipContent()}>
-        <div class="flex items-center gap-1 px-2 cursor-default select-none">
+        <div class="pl-2.5 pr-4 flex gap-2 cursor-default select-none items-center justify-center">
           <div
             classList={{
               "size-1.5 rounded-full": true,

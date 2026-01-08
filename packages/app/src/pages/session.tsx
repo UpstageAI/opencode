@@ -40,14 +40,7 @@ import { extractPromptFromParts } from "@/utils/prompt"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { usePermission } from "@/context/permission"
 import { showToast } from "@opencode-ai/ui/toast"
-import {
-  SessionHeader,
-  SessionContextTab,
-  SortableTab,
-  FileVisual,
-  SortableTerminalTab,
-  NewSessionView,
-} from "@/components/session"
+import { SessionContextTab, SortableTab, FileVisual, SortableTerminalTab, NewSessionView } from "@/components/session"
 import { usePlatform } from "@/context/platform"
 import { same } from "@/utils/same"
 
@@ -776,7 +769,6 @@ export default function Page() {
 
   return (
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
-      <SessionHeader />
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Mobile tab bar - only shown on mobile when there are diffs */}
         <Show when={!isDesktop() && diffs().length > 0}>
@@ -857,7 +849,7 @@ export default function Page() {
                           autoScroll.handleScroll()
                           if (isDesktop()) scheduleScrollSpy(e.currentTarget)
                         }}
-                        onClick={autoScroll.handleInteraction}
+                        onPointerDown={autoScroll.handleInteraction}
                         class="relative min-w-0 w-full h-full overflow-y-auto no-scrollbar"
                       >
                         <div
@@ -935,7 +927,9 @@ export default function Page() {
 
           {/* Prompt input */}
           <div
-            ref={(el) => (promptDock = el)}
+            ref={(el) => {
+              promptDock = el
+            }}
             class="absolute inset-x-0 bottom-0 pt-12 pb-4 md:pb-8 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none"
           >
             <div
