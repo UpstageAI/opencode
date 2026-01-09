@@ -7,11 +7,15 @@ import { Server } from "../server/server"
 import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
+import { CodexAuthPlugin } from "./codex"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
   const BUILTIN = ["opencode-copilot-auth@0.0.11", "opencode-anthropic-auth@0.0.8"]
+
+  // Built-in plugins that are directly imported (not installed from npm)
+  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin]
 
   const state = Instance.state(async () => {
     const client = createOpencodeClient({
@@ -20,7 +24,7 @@ export namespace Plugin {
       fetch: async (...args) => Server.App().fetch(...args),
     })
     const config = await Config.get()
-    const hooks = []
+    const hooks: Hooks[] = []
     const input: PluginInput = {
       client,
       project: Instance.project,
@@ -29,6 +33,16 @@ export namespace Plugin {
       serverUrl: Server.url(),
       $: Bun.$,
     }
+
+    // Load internal plugins first
+    if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
+      for (const plugin of INTERNAL_PLUGINS) {
+        log.info("loading internal plugin", { name: plugin.name })
+        const init = await plugin(input)
+        hooks.push(init)
+      }
+    }
+
     const plugins = [...(config.plugin ?? [])]
     if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
       plugins.push(...BUILTIN)
