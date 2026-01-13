@@ -162,7 +162,8 @@ describe("structured-output.createStructuredOutputTool", () => {
       onSuccess: () => {},
     })
 
-    expect(tool.id).toBe("StructuredOutput")
+    // AI SDK tool type doesn't expose id, but we set it internally
+    expect((tool as any).id).toBe("StructuredOutput")
   })
 
   test("creates tool with description", () => {
@@ -223,8 +224,9 @@ describe("structured-output.createStructuredOutputTool", () => {
       },
     })
 
+    expect(tool.execute).toBeDefined()
     const testArgs = { name: "Test Company" }
-    const result = await tool.execute(testArgs, {
+    const result = await tool.execute!(testArgs, {
       toolCallId: "test-call-id",
       messages: [],
       abortSignal: undefined as any,
@@ -241,7 +243,8 @@ describe("structured-output.createStructuredOutputTool", () => {
       onSuccess: () => {},
     })
 
-    const modelOutput = tool.toModelOutput({
+    expect(tool.toModelOutput).toBeDefined()
+    const modelOutput = tool.toModelOutput!({
       output: "Test output",
       title: "Test",
       metadata: { valid: true },

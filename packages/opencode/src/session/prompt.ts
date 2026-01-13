@@ -576,21 +576,21 @@ export namespace SessionPrompt {
         toolChoice: outputFormat.type === "json_schema" ? "required" : undefined,
       })
 
-      // Handle structured output logic
-      // (outputFormat already set above before process call)
+      // If structured output was captured, save it and exit immediately
+      // This takes priority because the StructuredOutput tool was called successfully
+      if (structuredOutput !== undefined) {
+        processor.message.structured_output = structuredOutput
+        processor.message.finish = processor.message.finish ?? "stop"
+        await Session.updateMessage(processor.message)
+        break
+      }
 
       // Check if model finished (finish reason is not "tool-calls" or "unknown")
       const modelFinished =
         processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)
 
       if (modelFinished && !processor.message.error) {
-        // Check if structured output was captured successfully
-        if (structuredOutput !== undefined) {
-          // Store structured output on the final assistant message
-          processor.message.structured_output = structuredOutput
-          await Session.updateMessage(processor.message)
-          break
-        } else if (outputFormat.type === "json_schema") {
+        if (outputFormat.type === "json_schema") {
           // Model stopped without calling StructuredOutput tool
           processor.message.error = new MessageV2.StructuredOutputError({
             message: "Model did not produce structured output",
@@ -794,7 +794,6 @@ export namespace SessionPrompt {
       inputSchema: jsonSchema(toolSchema as any),
       async execute(args) {
         // AI SDK validates args against inputSchema before calling execute()
-        // So args is guaranteed to match the schema at this point
         input.onSuccess(args)
         return {
           output: "Structured output captured successfully.",

@@ -43,18 +43,22 @@ describe("StructuredOutput Integration", () => {
             },
             required: ["answer"],
           },
+          retryCount: 0,
         },
       })
 
-      // Verify structured output was captured
-      expect(result.info.structured_output).toBeDefined()
-      expect(typeof result.info.structured_output).toBe("object")
+      // Verify structured output was captured (only on assistant messages)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        expect(result.info.structured_output).toBeDefined()
+        expect(typeof result.info.structured_output).toBe("object")
 
-      const output = result.info.structured_output as any
-      expect(output.answer).toBe(4)
+        const output = result.info.structured_output as any
+        expect(output.answer).toBe(4)
 
-      // Verify no error was set
-      expect(result.info.error).toBeUndefined()
+        // Verify no error was set
+        expect(result.info.error).toBeUndefined()
+      }
 
       // Clean up
       // Note: Not removing session to avoid race with background SessionSummary.summarize
@@ -93,23 +97,27 @@ describe("StructuredOutput Integration", () => {
             },
             required: ["company"],
           },
+          retryCount: 0,
         },
       })
 
-      // Verify structured output was captured
-      expect(result.info.structured_output).toBeDefined()
-      const output = result.info.structured_output as any
+      // Verify structured output was captured (only on assistant messages)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        expect(result.info.structured_output).toBeDefined()
+        const output = result.info.structured_output as any
 
-      expect(output.company).toBeDefined()
-      expect(output.company.name).toBe("Anthropic")
-      expect(typeof output.company.founded).toBe("number")
+        expect(output.company).toBeDefined()
+        expect(output.company.name).toBe("Anthropic")
+        expect(typeof output.company.founded).toBe("number")
 
-      if (output.products) {
-        expect(Array.isArray(output.products)).toBe(true)
+        if (output.products) {
+          expect(Array.isArray(output.products)).toBe(true)
+        }
+
+        // Verify no error was set
+        expect(result.info.error).toBeUndefined()
       }
-
-      // Verify no error was set
-      expect(result.info.error).toBeUndefined()
 
       // Clean up
       // Note: Not removing session to avoid race with background SessionSummary.summarize
@@ -133,14 +141,15 @@ describe("StructuredOutput Integration", () => {
         },
       })
 
-      // Verify no structured output (text mode)
-      expect(result.info.structured_output).toBeUndefined()
+      // Verify no structured output (text mode) and no error
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        expect(result.info.structured_output).toBeUndefined()
+        expect(result.info.error).toBeUndefined()
+      }
 
       // Verify we got a response with parts
       expect(result.parts.length).toBeGreaterThan(0)
-
-      // Verify no error was set
-      expect(result.info.error).toBeUndefined()
 
       // Clean up
       // Note: Not removing session to avoid race with background SessionSummary.summarize
