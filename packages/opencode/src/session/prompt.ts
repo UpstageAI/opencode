@@ -573,6 +573,7 @@ export namespace SessionPrompt {
         ],
         tools,
         model,
+        toolChoice: outputFormat.type === "json_schema" ? "required" : undefined,
       })
 
       // Handle structured output logic
