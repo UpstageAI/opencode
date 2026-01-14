@@ -77,7 +77,7 @@ export default function Black() {
                             "view-transition-name": `amount-${plan.id}`,
                           }}
                         >
-                          ${plan.amount}
+                          ${plan.id}
                         </span>
                         <Show when={!isSelected()}>
                           <span
@@ -126,12 +126,12 @@ export default function Black() {
                         <li>Cancel your subscription at anytime</li>
                       </ul>
                       <div data-slot="actions">
-                        <button type="button" onClick={cancel} data-slot="cancel">
+                        <button type="button" onClick={() => setSelected(null)} data-slot="cancel">
                           Cancel
                         </button>
-                        <A href={`/black/subscribe?plan=${plan.id}`} data-slot="continue">
+                        <a href={`/black/subscribe/${plan.id}`} data-slot="continue">
                           Continue
-                        </A>
+                        </a>
                       </div>
                     </div>
                   </Show>
