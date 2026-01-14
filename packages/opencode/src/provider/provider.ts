@@ -120,8 +120,7 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          // TODO: REMOVE THAT XTRA CHECK BEFORE MERGE!!!!!!!!!
-          if (modelID.includes("codex") || modelID.includes("gpt-5")) {
+          if (modelID.includes("codex")) {
             return sdk.responses(modelID)
           }
           return sdk.chat(modelID)
