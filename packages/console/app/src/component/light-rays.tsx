@@ -536,7 +536,7 @@ export default function LightRays(props: LightRaysProps) {
 
         try {
           const uniformData = createUniformBufferCorrected(uniformDataRef)
-          deviceRef.queue.writeBuffer(uniformBufferRef, 0, uniformData)
+          deviceRef.queue.writeBuffer(uniformBufferRef, 0, uniformData.buffer)
 
           const commandEncoder = deviceRef.createCommandEncoder()
 
