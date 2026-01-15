@@ -91,39 +91,7 @@ describe("ConfigMarkdown: normal template", () => {
 })
 
 describe("ConfigMarkdown: frontmatter parsing", async () => {
-  const template = `---
-description: "This is a description wrapped in quotes"
-# field: this is a commented out field that should be ignored
-occupation: This man has the following occupation: Software Engineer
-title: 'Hello World'
-name: John "Doe"
-
-family: He has no 'family'
-summary: >
-  This is a summary
-url: https://example.com:8080/path?query=value
-time: The time is 12:30:00 PM
-nested: First: Second: Third: Fourth
-quoted_colon: "Already quoted: no change needed"
-single_quoted_colon: 'Single quoted: also fine'
-mixed: He said "hello: world" and then left
-empty:
-dollar: Use $' and $& for special patterns
----
-
-Content that should not be parsed:
-
-fake_field: this is not yaml
-another: neither is this
-time: 10:30:00 AM
-url: https://should-not-be-parsed.com:3000
-
-The above lines look like YAML but are just content.
-`
-
-  const matter = await import("gray-matter")
-  const preprocessed = ConfigMarkdown.preprocessFrontmatter(template)
-  const parsed = matter.default(preprocessed)
+  const parsed = await ConfigMarkdown.parse(import.meta.dir + "/fixtures/frontmatter.md")
 
   test("should parse without throwing", () => {
     expect(parsed).toBeDefined()
@@ -200,5 +168,25 @@ The above lines look like YAML but are just content.
     expect(parsed.content).toContain("Content that should not be parsed:")
     expect(parsed.content).toContain("fake_field: this is not yaml")
     expect(parsed.content).toContain("url: https://should-not-be-parsed.com:3000")
+  })
+})
+
+describe("ConfigMarkdown: frontmatter parsing w/ empty frontmatter", async () => {
+  const result = await ConfigMarkdown.parse(import.meta.dir + "/fixtures/empty-frontmatter.md")
+
+  test("should parse without throwing", () => {
+    expect(result).toBeDefined()
+    expect(result.data).toEqual({})
+    expect(result.content.trim()).toBe("Content")
+  })
+})
+
+describe("ConfigMarkdown: frontmatter parsing w/ no frontmatter", async () => {
+  const result = await ConfigMarkdown.parse(import.meta.dir + "/fixtures/no-frontmatter.md")
+
+  test("should parse without throwing", () => {
+    expect(result).toBeDefined()
+    expect(result.data).toEqual({})
+    expect(result.content.trim()).toBe("Content")
   })
 })
