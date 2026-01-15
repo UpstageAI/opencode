@@ -297,7 +297,7 @@ document.addEventListener("click", (e) => {
   const link = (e.target as HTMLElement).closest("a.external-link") as HTMLAnchorElement | null
   if (link?.href) {
     e.preventDefault()
-    platform.openLink(link.href)
+    shellOpen(link.href)
   }
 })
 
