@@ -22,8 +22,8 @@ export namespace ProviderTransform {
     model: Provider.Model,
     options: Record<string, unknown>,
   ): ModelMessage[] {
-    // Strip openai itemId metadata when store=false to avoid sending stale IDs
-    if (model.api.npm === "@ai-sdk/openai" && options.store === false) {
+    // Strip openai itemId metadata following what codex does
+    if (model.api.npm === "@ai-sdk/openai" || options.store === false) {
       msgs = msgs.map((msg) => {
         if (!Array.isArray(msg.content)) return msg
         const content = msg.content.map((part) => {
@@ -486,8 +486,8 @@ export namespace ProviderTransform {
   }): Record<string, any> {
     const result: Record<string, any> = {}
 
-    // all codex plans MUST use store = false
-    if (input.model.providerID === "openai" && input.auth?.type === "oauth") {
+    // openai and providers using openai package should set store to false by default.
+    if (input.model.providerID === "openai" || input.model.api.npm === "@ai-sdk/openai") {
       result["store"] = false
     }
 
