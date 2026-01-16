@@ -49,10 +49,10 @@ export default function Black() {
                     data-slot="pricing-card"
                     style={{ "view-transition-name": `card-${plan.id}` }}
                   >
-                    <div data-slot="icon" style={{ "view-transition-name": `icon-${plan.id}` }}>
+                    <div data-slot="icon">
                       <PlanIcon plan={plan.id} />
                     </div>
-                    <p data-slot="price" style={{ "view-transition-name": `price-${plan.id}` }}>
+                    <p data-slot="price">
                       <span data-slot="amount">${plan.id}</span> <span data-slot="period">per month</span>
                       <Show when={plan.multiplier}>
                         <span data-slot="multiplier">{plan.multiplier}</span>
@@ -67,76 +67,6 @@ export default function Black() {
             {(plan) => (
               <div data-slot="selected-plan">
                 <div data-slot="selected-card" style={{ "view-transition-name": `card-${plan().id}` }}>
-                  <div data-slot="icon" style={{ "view-transition-name": `icon-${plan().id}` }}>
-                    <PlanIcon plan={plan().id} />
-                  </div>
-                  <p data-slot="price" style={{ "view-transition-name": `price-${plan().id}` }}>
-                    <span data-slot="amount">${plan().id}</span>{" "}
-                    <span data-slot="period">per person billed monthly</span>
-                    <Show when={plan().multiplier}>
-                      <span data-slot="multiplier">{plan().multiplier}</span>
-                    </Show>
-                  </p>
-                  <ul data-slot="terms" style={{ "view-transition-name": `terms-${plan().id}` }}>
-                    <li>Your subscription will not start immediately</li>
-                    <li>You will be added to the waitlist and activated soon</li>
-                    <li>Your card will be only charged when your subscription is activated</li>
-                    <li>Usage limits apply, heavily automated use may reach limits sooner</li>
-                    <li>Subscriptions for individuals, contact Enterprise for teams</li>
-                    <li>Limits may be adjusted and plans may be discontinued in the future</li>
-                    <li>Cancel your subscription at anytime</li>
-                  </ul>
-                  <div data-slot="actions" style={{ "view-transition-name": `actions-${plan().id}` }}>
-                    <button type="button" onClick={() => cancel()} data-slot="cancel">
-                      Cancel
-                    </button>
-                    <a href={`/black/subscribe/${plan().id}`} data-slot="continue">
-                      Continue
-                    </a>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Match>
-          <Match when={selectedPlan()}>
-            {(plan) => (
-              <div data-slot="selected-plan">
-                <div data-slot="selected-card">
-                  <div data-slot="icon" style={{ "view-transition-name": `icon-${plan().id}` }}>
-                    <PlanIcon plan={plan().id} />
-                  </div>
-                  <p data-slot="price" style={{ "view-transition-name": `price-${plan().id}` }}>
-                    <span data-slot="amount">${plan().id}</span>{" "}
-                    <span data-slot="period">per person billed monthly</span>
-                    <Show when={plan().multiplier}>
-                      <span data-slot="multiplier">{plan().multiplier}</span>
-                    </Show>
-                  </p>
-                  <ul data-slot="terms" style={{ "view-transition-name": `terms-${plan().id}` }}>
-                    <li>Your subscription will not start immediately</li>
-                    <li>You will be added to the waitlist and activated soon</li>
-                    <li>Your card will be only charged when your subscription is activated</li>
-                    <li>Usage limits apply, heavily automated use may reach limits sooner</li>
-                    <li>Subscriptions for individuals, contact Enterprise for teams</li>
-                    <li>Limits may be adjusted and plans may be discontinued in the future</li>
-                    <li>Cancel your subscription at anytime</li>
-                  </ul>
-                  <div data-slot="actions" style={{ "view-transition-name": `actions-${plan().id}` }}>
-                    <button type="button" onClick={() => cancel()} data-slot="cancel">
-                      Cancel
-                    </button>
-                    <a href={`/black/subscribe/${plan().id}`} data-slot="continue">
-                      Continue
-                    </a>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Match>
-          <Match when={selectedPlan()}>
-            {(plan) => (
-              <div data-slot="selected-plan" style={{ "view-transition-name": "selected-plan" }}>
-                <div data-slot="selected-card">
                   <div data-slot="icon">
                     <PlanIcon plan={plan().id} />
                   </div>

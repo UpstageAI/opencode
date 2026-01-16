@@ -16,6 +16,7 @@ import {
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
+import { Persist, persisted } from "@/utils/persist"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Button } from "@opencode-ai/ui/button"
@@ -62,13 +63,18 @@ import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
 
 export default function Layout(props: ParentProps) {
-  const [store, setStore] = createStore({
-    lastSession: {} as { [directory: string]: string },
-    activeProject: undefined as string | undefined,
-    activeWorkspace: undefined as string | undefined,
-    workspaceOrder: {} as Record<string, string[]>,
-    workspaceExpanded: {} as Record<string, boolean>,
-  })
+  const [store, setStore, , ready] = persisted(
+    Persist.global("layout.page", ["layout.page.v1"]),
+    createStore({
+      lastSession: {} as { [directory: string]: string },
+      activeProject: undefined as string | undefined,
+      activeWorkspace: undefined as string | undefined,
+      workspaceOrder: {} as Record<string, string[]>,
+      workspaceExpanded: {} as Record<string, boolean>,
+    }),
+  )
+
+  const pageReady = createMemo(() => ready())
 
   let scrollContainerRef: HTMLDivElement | undefined
   const xlQuery = window.matchMedia("(min-width: 1280px)")
@@ -81,6 +87,7 @@ export default function Layout(props: ParentProps) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const layout = useLayout()
+  const layoutReady = createMemo(() => layout.ready())
   const platform = usePlatform()
   const server = useServer()
   const notification = useNotification()
@@ -289,6 +296,8 @@ export default function Layout(props: ParentProps) {
   })
 
   createEffect(() => {
+    if (!pageReady()) return
+    if (!layoutReady()) return
     const project = currentProject()
     if (!project) return
 
@@ -310,6 +319,16 @@ export default function Layout(props: ParentProps) {
 
     if (merged.some((d, i) => d !== existing[i])) {
       setStore("workspaceOrder", project.worktree, merged)
+    }
+  })
+
+  createEffect(() => {
+    if (!pageReady()) return
+    if (!layoutReady()) return
+    for (const [directory, expanded] of Object.entries(store.workspaceExpanded)) {
+      if (layout.sidebar.workspaces(directory)()) continue
+      if (!expanded) continue
+      setStore("workspaceExpanded", directory, false)
     }
   })
 
@@ -703,12 +722,13 @@ export default function Layout(props: ParentProps) {
   }
 
   createEffect(() => {
+    if (!pageReady()) return
     if (!params.dir || !params.id) return
     const directory = base64Decode(params.dir)
     const id = params.id
     setStore("lastSession", directory, id)
     notification.session.markViewed(id)
-    untrack(() => setStore("workspaceExpanded", directory, true))
+    untrack(() => setStore("workspaceExpanded", directory, (value) => value ?? true))
     requestAnimationFrame(() => scrollToSession(id))
   })
 
@@ -823,7 +843,7 @@ export default function Layout(props: ParentProps) {
             iconUrl={props.project.icon?.url}
             iconColor={props.project.icon?.color}
             size="small"
-            class={`size-full ${props.class ?? ""}`}
+            class="size-full rounded"
             style={
               notifications().length > 0 && props.notify
                 ? { "-webkit-mask-image": mask, "mask-image": mask }
@@ -881,7 +901,7 @@ export default function Layout(props: ParentProps) {
     return (
       <div
         data-session-id={props.session.id}
-        class="group/session relative w-full rounded-md cursor-default transition-colors pl-2 pr-3
+        class="group/session relative w-full rounded-md cursor-default transition-colors px-3
                hover:bg-surface-raised-base-hover focus-within:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active"
       >
         <Tooltip placement={props.mobile ? "bottom" : "right"} value={props.session.title} gutter={16} openDelay={1000}>
@@ -896,9 +916,9 @@ export default function Layout(props: ParentProps) {
                 class="shrink-0 size-6 flex items-center justify-center"
                 style={{ color: tint() ?? "var(--icon-interactive-base)" }}
               >
-                <Switch>
+                <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
                   <Match when={isWorking()}>
-                    <Spinner class="size-[15px] opacity-50" />
+                    <Spinner class="size-[15px]" />
                   </Match>
                   <Match when={hasPermissions()}>
                     <div class="size-1.5 rounded-full bg-surface-warning-strong" />
@@ -936,6 +956,17 @@ export default function Layout(props: ParentProps) {
             <IconButton icon="archive" variant="ghost" onClick={() => archiveSession(props.session)} />
           </TooltipKeybind>
         </div>
+      </div>
+    )
+  }
+
+  const SessionSkeleton = (props: { count?: number }): JSX.Element => {
+    const items = Array.from({ length: props.count ?? 4 }, (_, index) => index)
+    return (
+      <div class="flex flex-col gap-1">
+        <For each={items}>
+          {() => <div class="h-8 w-full rounded-md bg-surface-raised-base opacity-60 animate-pulse" />}
+        </For>
       </div>
     )
   }
@@ -978,9 +1009,10 @@ export default function Layout(props: ParentProps) {
       <button
         type="button"
         classList={{
-          "flex items-center justify-center size-10 p-1 rounded-md border transition-colors cursor-default": true,
-          "bg-transparent border-icon-strong-base hover:bg-surface-base-hover": selected(),
-          "bg-transparent border-transparent hover:bg-surface-base-hover hover:border-border-weak-base": !selected(),
+          "flex items-center justify-center size-10 p-1 rounded-lg overflow-hidden transition-colors cursor-default": true,
+          "bg-transparent border-2 border-icon-strong-base hover:bg-surface-base-hover": selected(),
+          "bg-transparent border border-transparent hover:bg-surface-base-hover hover:border-border-weak-base":
+            !selected(),
         }}
         onClick={() => navigateToProject(props.project.worktree)}
       >
@@ -1033,7 +1065,7 @@ export default function Layout(props: ParentProps) {
               <div class="px-2 py-2 border-t border-border-weak-base">
                 <Button
                   variant="ghost"
-                  class="flex w-full text-left justify-start text-text-base px-2"
+                  class="flex w-full text-left justify-start text-text-base px-2 hover:bg-transparent active:bg-transparent"
                   onClick={() => {
                     layout.sidebar.open()
                     navigateToProject(props.project.worktree)
@@ -1101,6 +1133,7 @@ export default function Layout(props: ParentProps) {
       return `${kind} : ${name}`
     })
     const open = createMemo(() => store.workspaceExpanded[props.directory] ?? true)
+    const loading = createMemo(() => open() && workspaceStore.status !== "complete" && sessions().length === 0)
     const hasMore = createMemo(() => local() && workspaceStore.sessionTotal > workspaceStore.session.length)
     const loadMore = async () => {
       if (!local()) return
@@ -1162,6 +1195,9 @@ export default function Layout(props: ParentProps) {
               >
                 New session
               </Button>
+              <Show when={loading()}>
+                <SessionSkeleton />
+              </Show>
               <For each={sessions()}>
                 {(session) => <SessionItem session={session} slug={slug()} mobile={props.mobile} />}
               </For>
@@ -1196,6 +1232,7 @@ export default function Layout(props: ParentProps) {
         .filter((session) => !session.parentID)
         .toSorted(sortSessions),
     )
+    const loading = createMemo(() => workspaceStore.status !== "complete" && sessions().length === 0)
     const hasMore = createMemo(() => workspaceStore.sessionTotal > workspaceStore.session.length)
     const loadMore = async () => {
       setWorkspaceStore("limit", (limit) => limit + 5)
@@ -1210,6 +1247,9 @@ export default function Layout(props: ParentProps) {
         class="size-full flex flex-col py-2 overflow-y-auto no-scrollbar"
       >
         <nav class="flex flex-col gap-1 px-2">
+          <Show when={loading()}>
+            <SessionSkeleton />
+          </Show>
           <For each={sessions()}>
             {(session) => <SessionItem session={session} slug={slug()} mobile={props.mobile} />}
           </For>
@@ -1493,7 +1533,9 @@ export default function Layout(props: ParentProps) {
         <div class="xl:hidden">
           <div
             classList={{
-              "fixed inset-0 z-40 transition-opacity duration-200": true,
+              "fixed inset-x-0 bottom-0 z-40 transition-opacity duration-200": true,
+              "top-10": platform.platform === "desktop",
+              "top-0": platform.platform !== "desktop",
               "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
               "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
             }}
@@ -1503,7 +1545,9 @@ export default function Layout(props: ParentProps) {
           />
           <div
             classList={{
-              "@container fixed inset-y-0 left-0 z-50 w-72 bg-background-base transition-transform duration-200 ease-out": true,
+              "@container fixed bottom-0 left-0 z-50 w-72 bg-background-base transition-transform duration-200 ease-out": true,
+              "top-10": platform.platform === "desktop",
+              "top-0": platform.platform !== "desktop",
               "translate-x-0": layout.mobileSidebar.opened(),
               "-translate-x-full": !layout.mobileSidebar.opened(),
             }}
@@ -1516,7 +1560,7 @@ export default function Layout(props: ParentProps) {
         <main
           classList={{
             "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
-            "border-l rounded-tl-sm": !layout.sidebar.opened(),
+            "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened(),
           }}
         >
           {props.children}
