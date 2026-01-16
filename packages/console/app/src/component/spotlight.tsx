@@ -413,10 +413,8 @@ const WGSL_SHADER = `
 
 const UNIFORM_BUFFER_SIZE = 144
 
-function createUniformBuffer(data: UniformData): Float32Array {
-  const buffer = new Float32Array(36)
+function updateUniformBuffer(buffer: Float32Array, data: UniformData): void {
   buffer[0] = data.iTime
-  buffer[1] = 0
   buffer[2] = data.iResolution[0]
   buffer[3] = data.iResolution[1]
   buffer[4] = data.lightPos[0]
@@ -444,11 +442,6 @@ function createUniformBuffer(data: UniformData): Float32Array {
   buffer[26] = data.particleSpeed
   buffer[27] = data.particleOpacity
   buffer[28] = data.particleDrift
-  buffer[29] = 0
-  buffer[30] = 0
-  buffer[31] = 0
-  buffer[32] = 0
-  return buffer
 }
 
 export default function Spotlight(props: SpotlightProps) {
@@ -462,7 +455,9 @@ export default function Spotlight(props: SpotlightProps) {
   let animationIdRef: number | null = null
   let cleanupFunctionRef: (() => void) | null = null
   let uniformDataRef: UniformData | null = null
+  let uniformArrayRef: Float32Array | null = null
   let configRef: SpotlightConfig = props.config()
+  let frameCount = 0
 
   const [isVisible, setIsVisible] = createSignal(false)
 
@@ -678,8 +673,9 @@ export default function Spotlight(props: SpotlightProps) {
 
         const timeSeconds = t * 0.001
         uniformDataRef.iTime = timeSeconds
+        frameCount++
 
-        if (props.onAnimationFrame) {
+        if (props.onAnimationFrame && frameCount % 2 === 0) {
           const pulsatingMin = configRef.pulsating !== false ? configRef.pulsating[0] : 1.0
           const pulsatingMax = configRef.pulsating !== false ? configRef.pulsating[1] : 1.0
           const pulseCenter = (pulsatingMin + pulsatingMax) * 0.5
@@ -691,18 +687,21 @@ export default function Spotlight(props: SpotlightProps) {
 
           const baseIntensity1 = 0.45 + 0.15 * Math.sin(timeSeconds * configRef.speed * 1.5)
           const baseIntensity2 = 0.3 + 0.2 * Math.cos(timeSeconds * configRef.speed * 1.1)
-          const intensity = (baseIntensity1 + baseIntensity2) * pulseValue
+          const intensity = Math.max((baseIntensity1 + baseIntensity2) * pulseValue, 0.55)
 
           props.onAnimationFrame({
             time: timeSeconds,
             intensity,
-            pulseValue,
+            pulseValue: Math.max(pulseValue, 0.9),
           })
         }
 
         try {
-          const uniformData = createUniformBuffer(uniformDataRef)
-          deviceRef.queue.writeBuffer(uniformBufferRef, 0, uniformData.buffer)
+          if (!uniformArrayRef) {
+            uniformArrayRef = new Float32Array(36)
+          }
+          updateUniformBuffer(uniformArrayRef, uniformDataRef)
+          deviceRef.queue.writeBuffer(uniformBufferRef, 0, uniformArrayRef.buffer)
 
           const commandEncoder = deviceRef.createCommandEncoder()
 

@@ -32,11 +32,11 @@ export default function BlackLayout(props: RouteSectionProps) {
     const wave3 = Math.sin(t * 0.8 + 2.5) * 0.5 + 0.5
 
     const shimmerPos = Math.sin(t * 0.7) * 0.5 + 0.5
-    const glowIntensity = state.intensity * state.pulseValue * 0.35
-    const fillOpacity = 0.1 + wave1 * 0.08 * state.pulseValue
-    const strokeBrightness = 55 + wave2 * 25 * state.pulseValue
+    const glowIntensity = Math.max(state.intensity * state.pulseValue * 0.35, 0.15)
+    const fillOpacity = Math.max(0.1 + wave1 * 0.08 * state.pulseValue, 0.12)
+    const strokeBrightness = Math.max(55 + wave2 * 25 * state.pulseValue, 60)
 
-    const shimmerIntensity = wave3 * 0.15 * state.pulseValue
+    const shimmerIntensity = Math.max(wave3 * 0.15 * state.pulseValue, 0.08)
 
     return {
       glowIntensity,
@@ -59,9 +59,7 @@ export default function BlackLayout(props: RouteSectionProps) {
     setSpotlightAnimationState(state)
   }
 
-  const spotlightConfig = createMemo(() => ({
-    ...defaultConfig,
-  }))
+  const spotlightConfig = () => defaultConfig
 
   return (
     <div data-page="black">
@@ -87,11 +85,7 @@ export default function BlackLayout(props: RouteSectionProps) {
       />
       <Meta name="twitter:image" content="/social-share-black.png" />
 
-      <Spotlight
-        config={spotlightConfig}
-        class="header-spotlight"
-        onAnimationFrame={handleAnimationFrame}
-      />
+      <Spotlight config={spotlightConfig} class="header-spotlight" onAnimationFrame={handleAnimationFrame} />
 
       <header data-component="header">
         <A href="/" data-component="header-logo">
