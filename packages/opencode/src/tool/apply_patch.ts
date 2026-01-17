@@ -15,8 +15,7 @@ const PatchParams = z.object({
 })
 
 export const ApplyPatchTool = Tool.define("apply_patch", {
-  description:
-    "Apply a patch to modify multiple files. Supports adding, updating, and deleting files with context-aware changes.",
+  description: "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.",
   parameters: PatchParams,
   async execute(params, ctx) {
     if (!params.patchText) {
