@@ -4,7 +4,7 @@ import { ulid } from "ulid"
 import { Provider } from "@/provider/provider"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
-import { db } from "@/storage/db"
+import { Database } from "@/storage/db"
 import { SessionShareTable } from "./share.sql"
 import { eq } from "drizzle-orm"
 import { Log } from "@/util/log"
@@ -79,17 +79,21 @@ export namespace ShareNext {
     })
       .then((x) => x.json())
       .then((x) => x as { id: string; url: string; secret: string })
-    db()
-      .insert(SessionShareTable)
-      .values({ sessionID, data: result })
-      .onConflictDoUpdate({ target: SessionShareTable.sessionID, set: { data: result } })
-      .run()
+    Database.use((db) =>
+      db
+        .insert(SessionShareTable)
+        .values({ sessionID, data: result })
+        .onConflictDoUpdate({ target: SessionShareTable.sessionID, set: { data: result } })
+        .run(),
+    )
     fullSync(sessionID)
     return result
   }
 
   function get(sessionID: string) {
-    const row = db().select().from(SessionShareTable).where(eq(SessionShareTable.sessionID, sessionID)).get()
+    const row = Database.use((db) =>
+      db.select().from(SessionShareTable).where(eq(SessionShareTable.sessionID, sessionID)).get(),
+    )
     return row?.data
   }
 
@@ -166,7 +170,7 @@ export namespace ShareNext {
         secret: share.secret,
       }),
     })
-    db().delete(SessionShareTable).where(eq(SessionShareTable.sessionID, sessionID)).run()
+    Database.use((db) => db.delete(SessionShareTable).where(eq(SessionShareTable.sessionID, sessionID)).run())
   }
 
   async function fullSync(sessionID: string) {

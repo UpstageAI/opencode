@@ -2,7 +2,7 @@ import type { Argv } from "yargs"
 import { Session } from "../../session"
 import { cmd } from "./cmd"
 import { bootstrap } from "../bootstrap"
-import { db } from "../../storage/db"
+import { Database } from "../../storage/db"
 import { SessionTable, MessageTable, PartTable } from "../../session/session.sql"
 import { Instance } from "../../project/instance"
 import { EOL } from "os"
@@ -106,30 +106,37 @@ export const ImportCommand = cmd({
         time_compacting: info.time.compacting,
         time_archived: info.time.archived,
       }
-      db().insert(SessionTable).values(row).onConflictDoUpdate({ target: SessionTable.id, set: row }).run()
+      Database.use((db) =>
+        db.insert(SessionTable).values(row).onConflictDoUpdate({ target: SessionTable.id, set: row }).run(),
+      )
 
       for (const msg of exportData.messages) {
-        db()
-          .insert(MessageTable)
-          .values({
-            id: msg.info.id,
-            sessionID: exportData.info.id,
-            data: msg.info,
-          })
-          .onConflictDoUpdate({ target: MessageTable.id, set: { data: msg.info } })
-          .run()
+        const { id: msgId, sessionID: msgSessionID, ...msgData } = msg.info
+        Database.use((db) =>
+          db
+            .insert(MessageTable)
+            .values({
+              id: msgId,
+              sessionID: exportData.info.id,
+              data: msgData,
+            })
+            .onConflictDoUpdate({ target: MessageTable.id, set: { data: msgData } })
+            .run(),
+        )
 
         for (const part of msg.parts) {
-          db()
-            .insert(PartTable)
-            .values({
-              id: part.id,
-              messageID: msg.info.id,
-              sessionID: exportData.info.id,
-              data: part,
-            })
-            .onConflictDoUpdate({ target: PartTable.id, set: { data: part } })
-            .run()
+          const { id: partId, messageID: _, sessionID: __, ...partData } = part
+          Database.use((db) =>
+            db
+              .insert(PartTable)
+              .values({
+                id: partId,
+                messageID: msg.info.id,
+                data: partData,
+              })
+              .onConflictDoUpdate({ target: PartTable.id, set: { data: partData } })
+              .run(),
+          )
         }
       }
 

@@ -2,7 +2,7 @@ import type { Argv } from "yargs"
 import { cmd } from "./cmd"
 import { Session } from "../../session"
 import { bootstrap } from "../bootstrap"
-import { db } from "../../storage/db"
+import { Database } from "../../storage/db"
 import { ProjectTable } from "../../project/project.sql"
 import { SessionTable } from "../../session/session.sql"
 import { Project } from "../../project/project"
@@ -85,7 +85,7 @@ async function getCurrentProject(): Promise<Project.Info> {
 }
 
 async function getAllSessions(): Promise<Session.Info[]> {
-  const sessionRows = db().select().from(SessionTable).all()
+  const sessionRows = Database.use((db) => db.select().from(SessionTable).all())
   return sessionRows.map((row) => Session.fromRow(row))
 }
 

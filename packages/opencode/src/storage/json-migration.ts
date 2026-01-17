@@ -4,31 +4,25 @@ import { eq } from "drizzle-orm"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { ProjectTable } from "../project/project.sql"
-import {
-  SessionTable,
-  MessageTable,
-  PartTable,
-  SessionDiffTable,
-  TodoTable,
-  PermissionTable,
-} from "../session/session.sql"
+import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"
 import { SessionShareTable, ShareTable } from "../share/share.sql"
 import path from "path"
+import fs from "fs"
 
 const log = Log.create({ service: "json-migration" })
 
-export async function migrateFromJson(sqlite: Database, customStorageDir?: string) {
+export function migrateFromJson(sqlite: Database, customStorageDir?: string) {
   const storageDir = customStorageDir ?? path.join(Global.Path.data, "storage")
   const migrationMarker = path.join(storageDir, "sqlite-migrated")
 
-  if (await Bun.file(migrationMarker).exists()) {
+  if (fs.existsSync(migrationMarker)) {
     log.info("json migration already completed")
     return
   }
 
-  if (!(await Bun.file(path.join(storageDir, "migration")).exists())) {
+  if (!fs.existsSync(path.join(storageDir, "migration"))) {
     log.info("no json storage found, skipping migration")
-    await Bun.write(migrationMarker, Date.now().toString())
+    fs.writeFileSync(migrationMarker, Date.now().toString())
     return
   }
 
@@ -49,9 +43,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate projects first (no FK deps)
   const projectGlob = new Bun.Glob("project/*.json")
-  for await (const file of projectGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of projectGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       if (!data.id) {
         stats.errors.push(`project missing id: ${file}`)
         continue
@@ -80,9 +74,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate sessions (depends on projects)
   const sessionGlob = new Bun.Glob("session/*/*.json")
-  for await (const file of sessionGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of sessionGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       if (!data.id || !data.projectID) {
         stats.errors.push(`session missing id or projectID: ${file}`)
         continue
@@ -128,9 +122,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate messages (depends on sessions)
   const messageGlob = new Bun.Glob("message/*/*.json")
-  for await (const file of messageGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of messageGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       if (!data.id || !data.sessionID) {
         stats.errors.push(`message missing id or sessionID: ${file}`)
         continue
@@ -141,11 +135,12 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
         log.warn("skipping orphaned message", { messageID: data.id, sessionID: data.sessionID })
         continue
       }
+      const { id, sessionID, ...rest } = data
       db.insert(MessageTable)
         .values({
-          id: data.id,
-          sessionID: data.sessionID,
-          data,
+          id,
+          sessionID,
+          data: rest,
         })
         .onConflictDoNothing()
         .run()
@@ -158,11 +153,11 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate parts (depends on messages)
   const partGlob = new Bun.Glob("part/*/*.json")
-  for await (const file of partGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of partGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
-      if (!data.id || !data.messageID || !data.sessionID) {
-        stats.errors.push(`part missing id, messageID, or sessionID: ${file}`)
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
+      if (!data.id || !data.messageID) {
+        stats.errors.push(`part missing id or messageID: ${file}`)
         continue
       }
       // Check if message exists
@@ -171,12 +166,12 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
         log.warn("skipping orphaned part", { partID: data.id, messageID: data.messageID })
         continue
       }
+      const { id, messageID, sessionID: _, ...rest } = data
       db.insert(PartTable)
         .values({
-          id: data.id,
-          messageID: data.messageID,
-          sessionID: data.sessionID,
-          data,
+          id,
+          messageID,
+          data: rest,
         })
         .onConflictDoNothing()
         .run()
@@ -187,11 +182,11 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
   }
   log.info("migrated parts", { count: stats.parts })
 
-  // Migrate session diffs
+  // Migrate session diffs (use raw SQL since TypeScript schema doesn't match migration)
   const diffGlob = new Bun.Glob("session_diff/*.json")
-  for await (const file of diffGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of diffGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       const sessionID = path.basename(file, ".json")
       // Check if session exists
       const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
@@ -199,7 +194,10 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
         log.warn("skipping orphaned session_diff", { sessionID })
         continue
       }
-      db.insert(SessionDiffTable).values({ sessionID, data }).onConflictDoNothing().run()
+      sqlite.run("INSERT OR IGNORE INTO session_diff (session_id, data) VALUES (?, ?)", [
+        sessionID,
+        JSON.stringify(data),
+      ])
       stats.diffs++
     } catch (e) {
       stats.errors.push(`failed to migrate session_diff ${file}: ${e}`)
@@ -209,9 +207,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate todos
   const todoGlob = new Bun.Glob("todo/*.json")
-  for await (const file of todoGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of todoGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       const sessionID = path.basename(file, ".json")
       const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
       if (!session) {
@@ -228,9 +226,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate permissions
   const permGlob = new Bun.Glob("permission/*.json")
-  for await (const file of permGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of permGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       const projectID = path.basename(file, ".json")
       const project = db.select().from(ProjectTable).where(eq(ProjectTable.id, projectID)).get()
       if (!project) {
@@ -247,9 +245,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate session shares
   const shareGlob = new Bun.Glob("session_share/*.json")
-  for await (const file of shareGlob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of shareGlob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       const sessionID = path.basename(file, ".json")
       const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
       if (!session) {
@@ -266,9 +264,9 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
 
   // Migrate shares (downloaded shared sessions, no FK)
   const share2Glob = new Bun.Glob("share/*.json")
-  for await (const file of share2Glob.scan({ cwd: storageDir, absolute: true })) {
+  for (const file of share2Glob.scanSync({ cwd: storageDir, absolute: true })) {
     try {
-      const data = await Bun.file(file).json()
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"))
       const sessionID = path.basename(file, ".json")
       db.insert(ShareTable).values({ sessionID, data }).onConflictDoNothing().run()
     } catch (e) {
@@ -277,7 +275,7 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
   }
 
   // Mark migration complete
-  await Bun.write(migrationMarker, Date.now().toString())
+  fs.writeFileSync(migrationMarker, Date.now().toString())
 
   log.info("json migration complete", {
     projects: stats.projects,

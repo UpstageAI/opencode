@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Project } from "../../src/project/project"
 import { Log } from "../../src/util/log"
-import { db } from "../../src/storage/db"
+import { Database } from "../../src/storage/db"
 import { ProjectTable } from "../../src/project/project.sql"
 import { eq } from "drizzle-orm"
 import { $ } from "bun"
@@ -101,7 +101,7 @@ describe("Project.discover", () => {
 
     await Project.discover(project)
 
-    const row = db().select().from(ProjectTable).where(eq(ProjectTable.id, project.id)).get()
+    const row = Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, project.id)).get())
     const updated = row ? Project.fromRow(row) : undefined
     expect(updated?.icon).toBeDefined()
     expect(updated?.icon?.url).toStartWith("data:")
@@ -117,7 +117,7 @@ describe("Project.discover", () => {
 
     await Project.discover(project)
 
-    const row = db().select().from(ProjectTable).where(eq(ProjectTable.id, project.id)).get()
+    const row = Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, project.id)).get())
     const updated = row ? Project.fromRow(row) : undefined
     expect(updated?.icon).toBeUndefined()
   })

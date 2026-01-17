@@ -11,7 +11,7 @@ import { Snapshot } from "@/snapshot"
 import { Log } from "@/util/log"
 import path from "path"
 import { Instance } from "@/project/instance"
-import { db } from "@/storage/db"
+import { Database } from "@/storage/db"
 import { SessionDiffTable, SessionTable } from "./session.sql"
 import { eq } from "drizzle-orm"
 import { Bus } from "@/bus"
@@ -50,23 +50,27 @@ export namespace SessionSummary {
       }),
     )
     const now = Date.now()
-    db()
-      .update(SessionTable)
-      .set({
-        summary_additions: diffs.reduce((sum, x) => sum + x.additions, 0),
-        summary_deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
-        summary_files: diffs.length,
-        time_updated: now,
-      })
-      .where(eq(SessionTable.id, input.sessionID))
-      .run()
+    Database.use((db) =>
+      db
+        .update(SessionTable)
+        .set({
+          summary_additions: diffs.reduce((sum, x) => sum + x.additions, 0),
+          summary_deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
+          summary_files: diffs.length,
+          time_updated: now,
+        })
+        .where(eq(SessionTable.id, input.sessionID))
+        .run(),
+    )
     const session = await Session.get(input.sessionID)
     Bus.publish(Session.Event.Updated, { info: session })
-    db()
-      .insert(SessionDiffTable)
-      .values({ sessionID: input.sessionID, data: diffs })
-      .onConflictDoUpdate({ target: SessionDiffTable.sessionID, set: { data: diffs } })
-      .run()
+    Database.use((db) =>
+      db
+        .insert(SessionDiffTable)
+        .values({ sessionID: input.sessionID, data: diffs })
+        .onConflictDoUpdate({ target: SessionDiffTable.sessionID, set: { data: diffs } })
+        .run(),
+    )
     Bus.publish(Session.Event.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
@@ -128,7 +132,9 @@ export namespace SessionSummary {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
-      const row = db().select().from(SessionDiffTable).where(eq(SessionDiffTable.sessionID, input.sessionID)).get()
+      const row = Database.use((db) =>
+        db.select().from(SessionDiffTable).where(eq(SessionDiffTable.sessionID, input.sessionID)).get(),
+      )
       return row?.data ?? []
     },
   )

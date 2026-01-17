@@ -3,7 +3,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
 import { Instance } from "@/project/instance"
-import { db } from "@/storage/db"
+import { Database } from "@/storage/db"
 import { PermissionTable } from "@/session/session.sql"
 import { eq } from "drizzle-orm"
 import { fn } from "@/util/fn"
@@ -109,7 +109,9 @@ export namespace PermissionNext {
 
   const state = Instance.state(async () => {
     const projectID = Instance.project.id
-    const row = db().select().from(PermissionTable).where(eq(PermissionTable.projectID, projectID)).get()
+    const row = Database.use((db) =>
+      db.select().from(PermissionTable).where(eq(PermissionTable.projectID, projectID)).get(),
+    )
     const stored = row?.data ?? ([] as Ruleset)
 
     const pending: Record<

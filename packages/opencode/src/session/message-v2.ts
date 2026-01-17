@@ -6,9 +6,9 @@ import { Identifier } from "../id/id"
 import { LSP } from "../lsp"
 import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
-import { db } from "@/storage/db"
+import { Database } from "@/storage/db"
 import { MessageTable, PartTable } from "./session.sql"
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, lt, and, inArray } from "drizzle-orm"
 import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
@@ -40,8 +40,8 @@ export namespace MessageV2 {
 
   const PartBase = z.object({
     id: z.string(),
-    sessionID: z.string(),
     messageID: z.string(),
+    sessionID: z.string(),
   })
 
   export const SnapshotPart = PartBase.extend({
@@ -609,23 +609,84 @@ export namespace MessageV2 {
   }
 
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
-    const rows = db()
-      .select()
-      .from(MessageTable)
-      .where(eq(MessageTable.sessionID, sessionID))
-      .orderBy(desc(MessageTable.id))
-      .all()
-    for (const row of rows) {
-      yield await get({
-        sessionID,
-        messageID: row.id,
-      })
+    const SIZE = 25
+    let cursor: string | undefined
+    while (true) {
+      const conditions = [eq(MessageTable.sessionID, sessionID)]
+      if (cursor) conditions.push(lt(MessageTable.id, cursor))
+
+      const ids = Database.use((db) =>
+        db
+          .select({ id: MessageTable.id })
+          .from(MessageTable)
+          .where(and(...conditions))
+          .orderBy(desc(MessageTable.id))
+          .limit(SIZE)
+          .all(),
+      )
+      if (ids.length === 0) break
+
+      const rows = Database.use((db) =>
+        db
+          .select({
+            message: MessageTable,
+            part: PartTable,
+          })
+          .from(MessageTable)
+          .leftJoin(PartTable, eq(PartTable.messageID, MessageTable.id))
+          .where(
+            inArray(
+              MessageTable.id,
+              ids.map((row) => row.id),
+            ),
+          )
+          .orderBy(desc(MessageTable.id), PartTable.id)
+          .all(),
+      )
+
+      const grouped = Map.groupBy(rows, (row) => row.message.id)
+      for (const id of ids) {
+        const group = grouped.get(id.id) ?? []
+        const first = group[0]
+        if (!first) continue
+        yield {
+          info: { ...first.message.data, id: first.message.id, sessionID: first.message.sessionID } as Info,
+          parts: group
+            .filter((row) => row.part)
+            .map((row) => ({
+              ...row.part!.data,
+              id: row.part!.id,
+              messageID: row.part!.messageID,
+              sessionID: first.message.sessionID,
+            })) as Part[],
+        }
+      }
+
+      cursor = ids[ids.length - 1]?.id
+      if (ids.length < SIZE) break
     }
   })
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
-    const rows = db().select().from(PartTable).where(eq(PartTable.messageID, messageID)).all()
-    const result = rows.map((row) => row.data)
+    const rows = Database.use((db) =>
+      db
+        .select({
+          id: PartTable.id,
+          messageID: PartTable.messageID,
+          sessionID: MessageTable.sessionID,
+          data: PartTable.data,
+        })
+        .from(PartTable)
+        .innerJoin(MessageTable, eq(PartTable.messageID, MessageTable.id))
+        .where(eq(PartTable.messageID, messageID))
+        .all(),
+    )
+    const result = rows.map((row) => ({
+      ...row.data,
+      id: row.id,
+      messageID: row.messageID,
+      sessionID: row.sessionID,
+    })) as Part[]
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result
   })
@@ -636,11 +697,30 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const row = db().select().from(MessageTable).where(eq(MessageTable.id, input.messageID)).get()
-      if (!row) throw new Error(`Message not found: ${input.messageID}`)
+      const rows = Database.use((db) =>
+        db
+          .select({
+            message: MessageTable,
+            part: PartTable,
+          })
+          .from(MessageTable)
+          .leftJoin(PartTable, eq(PartTable.messageID, MessageTable.id))
+          .where(eq(MessageTable.id, input.messageID))
+          .orderBy(PartTable.id)
+          .all(),
+      )
+      const first = rows[0]
+      if (!first) throw new Error(`Message not found: ${input.messageID}`)
       return {
-        info: row.data,
-        parts: await parts(input.messageID),
+        info: { ...first.message.data, id: first.message.id, sessionID: first.message.sessionID } as Info,
+        parts: rows
+          .filter((row) => row.part)
+          .map((row) => ({
+            ...row.part!.data,
+            id: row.part!.id,
+            messageID: row.part!.messageID,
+            sessionID: first.message.sessionID,
+          })) as Part[],
       }
     },
   )

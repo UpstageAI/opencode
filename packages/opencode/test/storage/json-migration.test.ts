@@ -8,14 +8,7 @@ import os from "os"
 import { migrateFromJson } from "../../src/storage/json-migration"
 import { ProjectTable } from "../../src/project/project.sql"
 import { Project } from "../../src/project/project"
-import {
-  SessionTable,
-  MessageTable,
-  PartTable,
-  SessionDiffTable,
-  TodoTable,
-  PermissionTable,
-} from "../../src/session/session.sql"
+import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../../src/session/session.sql"
 import { SessionShareTable, ShareTable } from "../../src/share/share.sql"
 import { migrations } from "../../src/storage/migrations.generated"
 
@@ -333,7 +326,7 @@ describe("JSON to SQLite migration", () => {
       expect(stats?.messages).toBe(1)
       const db = drizzle(sqlite)
       const row = db.select().from(MessageTable).where(eq(MessageTable.id, fixtures.message.id)).get()
-      expect(row?.data.id).toBe(fixtures.message.id)
+      expect(row?.id).toBe(fixtures.message.id)
       expect(row?.sessionID).toBe(fixtures.session.id)
     })
 
@@ -390,9 +383,8 @@ describe("JSON to SQLite migration", () => {
       expect(stats?.parts).toBe(1)
       const db = drizzle(sqlite)
       const row = db.select().from(PartTable).where(eq(PartTable.id, fixtures.part.id)).get()
-      expect(row?.data.id).toBe(fixtures.part.id)
+      expect(row?.id).toBe(fixtures.part.id)
       expect(row?.messageID).toBe(fixtures.message.id)
-      expect(row?.sessionID).toBe(fixtures.session.id)
     })
 
     test("skips orphaned part (missing message)", async () => {
@@ -423,7 +415,7 @@ describe("JSON to SQLite migration", () => {
 
       expect(stats?.parts).toBe(0)
       expect(stats?.errors.length).toBe(1)
-      expect(stats?.errors[0]).toContain("missing id, messageID, or sessionID")
+      expect(stats?.errors[0]).toContain("missing id or messageID")
     })
   })
 
@@ -434,15 +426,19 @@ describe("JSON to SQLite migration", () => {
         path.join(storageDir, "session", fixtures.project.id, `${fixtures.session.id}.json`),
         JSON.stringify(fixtures.session),
       )
-      const diff = [{ file: "test.ts", before: "", after: "", additions: 10, deletions: 5 }]
+      const diff = [{ file: "test.ts", before: "", after: "console.log('hello')", additions: 10, deletions: 5 }]
       await Bun.write(path.join(storageDir, "session_diff", `${fixtures.session.id}.json`), JSON.stringify(diff))
 
       const stats = await migrateFromJson(sqlite, storageDir)
 
       expect(stats?.diffs).toBe(1)
-      const db = drizzle(sqlite)
-      const row = db.select().from(SessionDiffTable).where(eq(SessionDiffTable.sessionID, fixtures.session.id)).get()
+      // Query raw since TypeScript schema doesn't match migration
+      const row = sqlite
+        .query<{ data: string }, [string]>("SELECT data FROM session_diff WHERE session_id = ?")
+        .get(fixtures.session.id)
       expect(row?.data).toBeDefined()
+      const data = JSON.parse(row!.data)
+      expect(data[0].file).toBe("test.ts")
     })
 
     test("migrates todo correctly", async () => {

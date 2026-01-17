@@ -22,13 +22,11 @@ CREATE INDEX `message_session_idx` ON `message` (`session_id`);--> statement-bre
 CREATE TABLE `part` (
 	`id` text PRIMARY KEY NOT NULL,
 	`message_id` text NOT NULL,
-	`session_id` text NOT NULL,
 	`data` text NOT NULL,
 	FOREIGN KEY (`message_id`) REFERENCES `message`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `part_message_idx` ON `part` (`message_id`);--> statement-breakpoint
-CREATE INDEX `part_session_idx` ON `part` (`session_id`);--> statement-breakpoint
 CREATE TABLE `permission` (
 	`project_id` text PRIMARY KEY NOT NULL,
 	`data` text NOT NULL,
@@ -36,11 +34,16 @@ CREATE TABLE `permission` (
 );
 --> statement-breakpoint
 CREATE TABLE `session_diff` (
-	`session_id` text PRIMARY KEY NOT NULL,
-	`data` text NOT NULL,
+	`session_id` text NOT NULL,
+	`file` text NOT NULL,
+	`before` text NOT NULL,
+	`after` text NOT NULL,
+	`additions` integer NOT NULL,
+	`deletions` integer NOT NULL,
 	FOREIGN KEY (`session_id`) REFERENCES `session`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `session_diff_session_idx` ON `session_diff` (`session_id`);--> statement-breakpoint
 CREATE TABLE `session` (
 	`id` text PRIMARY KEY NOT NULL,
 	`project_id` text NOT NULL,
