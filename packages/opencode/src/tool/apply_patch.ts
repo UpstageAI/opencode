@@ -134,8 +134,6 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
         }
 
         case "delete": {
-          // Check if file exists for deletion
-          await FileTime.assert(ctx.sessionID, filePath)
           const contentToDelete = await fs.readFile(filePath, "utf-8").catch((error) => {
             throw new Error(`apply_patch verification failed: ${error}`)
           })
