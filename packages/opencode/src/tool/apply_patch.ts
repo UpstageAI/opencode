@@ -7,8 +7,9 @@ import { Bus } from "../bus"
 import { FileWatcher } from "../file/watcher"
 import { Instance } from "../project/instance"
 import { Patch } from "../patch"
-import { createTwoFilesPatch } from "diff"
+import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
+import { trimDiff } from "./edit"
 
 const PatchParams = z.object({
   patchText: z.string().describe("The full patch text that describes all changes to be made"),
@@ -46,6 +47,9 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       newContent: string
       type: "add" | "update" | "delete" | "move"
       movePath?: string
+      diff: string
+      additions: number
+      deletions: number
     }> = []
 
     let totalDiff = ""
@@ -59,20 +63,30 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
           const oldContent = ""
           const newContent =
             hunk.contents.length === 0 || hunk.contents.endsWith("\n") ? hunk.contents : `${hunk.contents}\n`
-          const diff = createTwoFilesPatch(filePath, filePath, oldContent, newContent)
+          const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, newContent))
+
+          let additions = 0
+          let deletions = 0
+          for (const change of diffLines(oldContent, newContent)) {
+            if (change.added) additions += change.count || 0
+            if (change.removed) deletions += change.count || 0
+          }
 
           fileChanges.push({
             filePath,
             oldContent,
             newContent,
             type: "add",
+            diff,
+            additions,
+            deletions,
           })
 
           totalDiff += diff + "\n"
           break
         }
 
-        case "update":
+        case "update": {
           // Check if file exists for update
           const stats = await fs.stat(filePath).catch(() => null)
           if (!stats || stats.isDirectory()) {
@@ -92,7 +106,14 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
             throw new Error(`apply_patch verification failed: ${error}`)
           }
 
-          const diff = createTwoFilesPatch(filePath, filePath, oldContent, newContent)
+          const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, newContent))
+
+          let additions = 0
+          let deletions = 0
+          for (const change of diffLines(oldContent, newContent)) {
+            if (change.added) additions += change.count || 0
+            if (change.removed) deletions += change.count || 0
+          }
 
           const movePath = hunk.move_path ? path.resolve(Instance.directory, hunk.move_path) : undefined
           await assertExternalDirectory(ctx, movePath)
@@ -103,28 +124,38 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
             newContent,
             type: hunk.move_path ? "move" : "update",
             movePath,
+            diff,
+            additions,
+            deletions,
           })
 
           totalDiff += diff + "\n"
           break
+        }
 
-        case "delete":
+        case "delete": {
           // Check if file exists for deletion
           await FileTime.assert(ctx.sessionID, filePath)
           const contentToDelete = await fs.readFile(filePath, "utf-8").catch((error) => {
             throw new Error(`apply_patch verification failed: ${error}`)
           })
-          const deleteDiff = createTwoFilesPatch(filePath, filePath, contentToDelete, "")
+          const deleteDiff = trimDiff(createTwoFilesPatch(filePath, filePath, contentToDelete, ""))
+
+          const deletions = contentToDelete.split("\n").length
 
           fileChanges.push({
             filePath,
             oldContent: contentToDelete,
             newContent: "",
             type: "delete",
+            diff: deleteDiff,
+            additions: 0,
+            deletions,
           })
 
           totalDiff += deleteDiff + "\n"
           break
+        }
       }
     }
 
@@ -196,10 +227,22 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
     })
     const summary = `Success. Updated the following files:\n${summaryLines.join("\n")}`
 
+    // Build per-file metadata for UI rendering
+    const files = fileChanges.map((change) => ({
+      filePath: change.filePath,
+      relativePath: path.relative(Instance.worktree, change.movePath ?? change.filePath),
+      type: change.type,
+      diff: change.diff,
+      additions: change.additions,
+      deletions: change.deletions,
+      movePath: change.movePath,
+    }))
+
     return {
       title: summary,
       metadata: {
         diff: totalDiff,
+        files,
       },
       output: summary,
     }
