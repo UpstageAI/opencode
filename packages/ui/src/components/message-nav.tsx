@@ -96,8 +96,16 @@ const stopScrollAnimation = (state: ScrollAnimationState | null, containerEl?: H
   }
 }
 
-export const MessageNav = (props: MessageNavProps) => {
-  const [local, others] = splitProps(props, ["messages", "current", "size", "onMessageSelect"])
+export function MessageNav(
+  props: ComponentProps<"nav"> & {
+    messages: UserMessage[]
+    current?: UserMessage
+    size: "normal" | "compact"
+    onMessageSelect: (message: UserMessage) => void
+    getLabel?: (message: UserMessage) => string | undefined
+  },
+) {
+  const [local, others] = splitProps(props, ["messages", "current", "size", "onMessageSelect", "getLabel"])
   let navRef: HTMLElement | undefined
   let listRef: HTMLUListElement | undefined
 

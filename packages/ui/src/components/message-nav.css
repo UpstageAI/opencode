@@ -48,6 +48,10 @@
       0 1px 2px 0 rgba(19, 16, 16, 0.06),
       0 1px 3px 0 rgba(19, 16, 16, 0.08);
   }
+
+  &[data-size="compact"] {
+    width: 24px;
+  }
 }
 
 [data-slot="message-nav-item-button"] {
