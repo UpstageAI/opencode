@@ -4,20 +4,30 @@ import { Log } from "../util/log"
 export namespace Scheduler {
   const log = Log.create({ service: "scheduler" })
 
+  export type Scope = "instance" | "global"
   export type Task = {
     id: string
     interval: number
     run: () => Promise<void>
+    scope?: Scope
   }
 
   type Timer = ReturnType<typeof setInterval>
+  type Entry = {
+    tasks: Map<string, Task>
+    timers: Map<string, Timer>
+  }
+
+  const create = (): Entry => {
+    const tasks = new Map<string, Task>()
+    const timers = new Map<string, Timer>()
+    return { tasks, timers }
+  }
+
+  const shared = create()
 
   const state = Instance.state(
-    () => {
-      const tasks = new Map<string, Task>()
-      const timers = new Map<string, Timer>()
-      return { tasks, timers }
-    },
+    () => create(),
     async (entry) => {
       for (const timer of entry.timers.values()) {
         clearInterval(timer)
@@ -28,8 +38,10 @@ export namespace Scheduler {
   )
 
   export function register(task: Task) {
-    const entry = state()
+    const scope = task.scope ?? "instance"
+    const entry = scope === "global" ? shared : state()
     const current = entry.timers.get(task.id)
+    if (current && scope === "global") return
     if (current) clearInterval(current)
 
     entry.tasks.set(task.id, task)

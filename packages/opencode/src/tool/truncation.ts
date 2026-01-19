@@ -27,6 +27,7 @@ export namespace Truncate {
       id: "tool.truncation.cleanup",
       interval: HOUR_MS,
       run: cleanup,
+      scope: "global",
     })
   }
 

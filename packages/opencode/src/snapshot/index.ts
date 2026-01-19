@@ -18,6 +18,7 @@ export namespace Snapshot {
       id: "snapshot.cleanup",
       interval: hour,
       run: cleanup,
+      scope: "instance",
     })
   }
 
