@@ -66,6 +66,7 @@ import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
+import { ScrollReveal } from "@opencode-ai/ui/scroll-reveal"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore, , ready] = persisted(
@@ -187,7 +188,9 @@ export default function Layout(props: ParentProps) {
             onClick={stopPropagation}
             onTouchStart={stopPropagation}
           >
-            {props.value()}
+            <ScrollReveal>
+              {props.value()}
+            </ScrollReveal>
           </span>
         }
       >
