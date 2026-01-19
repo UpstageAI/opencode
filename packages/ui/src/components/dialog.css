@@ -110,6 +110,7 @@
         flex-direction: column;
         flex: 1;
         overflow-y: auto;
+        padding-bottom: 12px;
 
         &:focus-visible {
           outline: none;

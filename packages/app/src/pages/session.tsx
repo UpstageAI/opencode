@@ -574,7 +574,7 @@ export default function Page() {
         const sessionID = params.id
         if (!sessionID) return
         if (status()?.type !== "idle") {
-          await sdk.client.session.abort({ sessionID }).catch(() => {})
+          await sdk.client.session.abort({ sessionID }).catch(() => { })
         }
         const revert = info()?.revert?.messageID
         // Find the last user message that's not already reverted
@@ -1103,7 +1103,7 @@ export default function Page() {
                   >
                     <div class="relative w-full h-full min-w-0">
                       <Show when={isDesktop()}>
-                        <div class="absolute inset-0 pointer-events-none z-10">
+                        <div class="absolute inset-0 pointer-events-none z-50">
                           <SessionMessageRail
                             messages={visibleUserMessages()}
                             current={activeMessage()}

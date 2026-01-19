@@ -3,6 +3,7 @@ import { createEffect, createSignal, For, onCleanup, type JSX, on, Show } from "
 import { createStore } from "solid-js/store"
 import { Icon, type IconProps } from "./icon"
 import { IconButton } from "./icon-button"
+import { ScrollFade } from "./scroll-fade"
 import { TextField } from "./text-field"
 
 export interface ListSearchProps {
@@ -169,7 +170,13 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           </Show>
         </div>
       </Show>
-      <div ref={setScrollRef} data-slot="list-scroll">
+      <ScrollFade
+        ref={setScrollRef}
+        direction="vertical"
+        fadeStartSize={0}
+        fadeEndSize={20}
+        data-slot="list-scroll"
+      >
         <Show
           when={flat().length > 0}
           fallback={
@@ -226,7 +233,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             )}
           </For>
         </Show>
-      </div>
+      </ScrollFade>
     </div>
   )
 }
