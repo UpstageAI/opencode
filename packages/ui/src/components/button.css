@@ -10,6 +10,9 @@
   cursor: default;
   outline: none;
   white-space: nowrap;
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.25, 0, 0.5, 1);
 
   &[data-variant="primary"] {
     background-color: var(--icon-strong-base);

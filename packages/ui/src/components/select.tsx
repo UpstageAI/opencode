@@ -49,6 +49,7 @@ export function Select<T>(props: SelectProps<T> & ButtonProps) {
       placement="bottom-start"
       value={local.current}
       options={grouped()}
+      gutter={12}
       optionValue={(x) => (local.value ? local.value(x) : (x as string))}
       optionTextValue={(x) => (local.label ? local.label(x) : (x as string))}
       optionGroupChildren="options"
@@ -73,7 +74,7 @@ export function Select<T>(props: SelectProps<T> & ButtonProps) {
                 : (itemProps.item.rawValue as string)}
           </Kobalte.ItemLabel>
           <Kobalte.ItemIndicator data-slot="select-select-item-indicator">
-            <Icon name="check-small" size="small" />
+            <Icon name="check" size="small" class="text-icon-strong-base" />
           </Kobalte.ItemIndicator>
         </Kobalte.Item>
       )}

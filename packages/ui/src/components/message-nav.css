@@ -26,12 +26,9 @@
   grid-template-rows: repeat(var(--message-nav-items), var(--message-nav-item-height));
   border-radius: var(--radius-md);
   transition-property: background-color, box-shadow, width, grid-template-rows, padding;
-  transition-duration: 200ms, 200ms, 200ms, 300ms, 300ms, 200ms;
+  transition-duration: 150ms;
+  transition-delay: 100ms, 100ms, 0ms, 0ms, 0ms, 0ms;
   transition-timing-function: cubic-bezier(0.25, 0, 0.5, 1);
-
-  &:not(:hover) {
-    transition-delay: 200ms, 200ms, 0ms, 0ms, 0ms, 0ms;
-  }
 
   &:hover {
     --message-nav-line-opacity: 0;
@@ -43,6 +40,7 @@
     --message-nav-title-transition-duration: 300ms;
     --message-nav-title-transition-delay: 100ms;
 
+    transition-duration: 200ms, 200ms, 200ms, 300ms, 300ms, 200ms;
     background-color: var(--surface-raised-stronger-non-alpha);
     box-shadow:
       0 0 0 1px var(--border-weak-base, rgba(17, 0, 0, 0.12)),
@@ -85,7 +83,7 @@
     left: 4px;
     top: 50%;
     opacity: var(--message-nav-line-opacity, 1);
-    transform: scaleX(var(--message-nav-line-scale, 0.66)) translateY(-50%);
+    transform: scaleX(var(--message-nav-line-scale, 0.66)) scaleY(.66) translateY(-50%);
     transform-origin: 0% 50%;
     background-color: var(--icon-weak-base);
     transition-property: opacity, background-color, transform;
@@ -128,7 +126,7 @@
 [data-slot="message-nav-item-title-inner"] {
   font-size: 12px;
   line-height: 23px;
-  padding-right: 4px;
+  padding-left: 4px;
   color: var(--text-base);
   white-space: nowrap;
   display: inline-flex;

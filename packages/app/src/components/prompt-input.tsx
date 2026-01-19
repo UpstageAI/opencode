@@ -784,7 +784,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .abort({
         sessionID: params.id!,
       })
-      .catch(() => {})
+      .catch(() => { })
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = prompt
