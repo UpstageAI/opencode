@@ -213,8 +213,12 @@ async fn check_server_health(url: &str, password: Option<&str>) -> bool {
         })
     });
 
-    let builder = reqwest::Client::builder().timeout(Duration::from_secs(3));
-    let builder = if no_proxy { builder.no_proxy() } else { builder };
+    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(3));
+
+    if no_proxy {
+        builder = builder.no_proxy();
+    };
+
     let Ok(client) = builder.build() else {
         return false;
     };
