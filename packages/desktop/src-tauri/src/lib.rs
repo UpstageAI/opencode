@@ -198,32 +198,37 @@ fn spawn_sidecar(app: &AppHandle, port: u32, password: &str) -> CommandChild {
     child
 }
 
-async fn check_server_health(url: &str, password: Option<&str>) -> bool {
-    let health_url = format!("{}/global/health", url.trim_end_matches('/'));
+fn url_is_localhost(url: &reqwest::Url) -> bool {
+    url.host_str().is_some_and(|host| {
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    })
+}
 
-    // Some environments set proxy variables (HTTP_PROXY/HTTPS_PROXY/ALL_PROXY) without
-    // excluding loopback. reqwest respects these by default, which can prevent the desktop
-    // app from reaching its own local sidecar server.
-    let no_proxy = reqwest::Url::parse(&health_url).ok().is_some_and(|u| {
-        u.host_str().is_some_and(|host| {
-            host.eq_ignore_ascii_case("localhost")
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback())
-        })
-    });
+async fn check_server_health(url: &str, password: Option<&str>) -> bool {
+    let Ok(url) = reqwest::Url::parse(url) else {
+        return false;
+    };
 
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(3));
 
-    if no_proxy {
+    if url_is_localhost(&url) {
+        // Some environments set proxy variables (HTTP_PROXY/HTTPS_PROXY/ALL_PROXY) without
+        // excluding loopback. reqwest respects these by default, which can prevent the desktop
+        // app from reaching its own local sidecar server.
         builder = builder.no_proxy();
     };
 
     let Ok(client) = builder.build() else {
         return false;
     };
+    let Ok(health_url) = url.join("/global/health") else {
+        return false;
+    };
 
-    let mut req = client.get(&health_url);
+    let mut req = client.get(health_url);
 
     if let Some(password) = password {
         req = req.basic_auth("opencode", Some(password));
