@@ -195,6 +195,42 @@ describe("ProviderTransform.maxOutputTokens", () => {
       expect(result).toBe(OUTPUT_TOKEN_MAX)
     })
   })
+
+  describe("anthropic with thinking options - google-vertex/anthropic", () => {
+    test("returns 32k when budgetTokens + 32k <= modelLimit", () => {
+      const modelLimit = 100000
+      const options = {
+        thinking: {
+          type: "enabled",
+          budgetTokens: 10000,
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/google-vertex/anthropic",
+        options,
+        modelLimit,
+        OUTPUT_TOKEN_MAX,
+      )
+      expect(result).toBe(OUTPUT_TOKEN_MAX)
+    })
+
+    test("returns modelLimit - budgetTokens when budgetTokens + 32k > modelLimit", () => {
+      const modelLimit = 50000
+      const options = {
+        thinking: {
+          type: "enabled",
+          budgetTokens: 30000,
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/google-vertex/anthropic",
+        options,
+        modelLimit,
+        OUTPUT_TOKEN_MAX,
+      )
+      expect(result).toBe(20000)
+    })
+  })
 })
 
 describe("ProviderTransform.schema - gemini array items", () => {
@@ -1669,6 +1705,34 @@ describe("ProviderTransform.variants", () => {
     })
   })
 
+  describe("@ai-sdk/google-vertex/anthropic", () => {
+    test("returns high and max with thinking budgetTokens", () => {
+      const model = createMockModel({
+        id: "google-vertex-anthropic/claude-opus-4-5@20251101",
+        providerID: "google-vertex-anthropic",
+        api: {
+          id: "claude-opus-4-5@20251101",
+          url: "https://vertexai.googleapis.com",
+          npm: "@ai-sdk/google-vertex/anthropic",
+        },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["high", "max"])
+      expect(result.high).toEqual({
+        thinking: {
+          type: "enabled",
+          budgetTokens: 16000,
+        },
+      })
+      expect(result.max).toEqual({
+        thinking: {
+          type: "enabled",
+          budgetTokens: 31999,
+        },
+      })
+    })
+  })
+
   describe("@ai-sdk/cohere", () => {
     test("returns empty object", () => {
       const model = createMockModel({
@@ -1722,6 +1786,135 @@ describe("ProviderTransform.variants", () => {
       })
       const result = ProviderTransform.variants(model)
       expect(result).toEqual({})
+    })
+  })
+})
+
+describe("ProviderTransform.providerOptions", () => {
+  const createMockModel = (overrides: Partial<any> = {}): any => ({
+    id: "test/test-model",
+    providerID: "test",
+    api: {
+      id: "test-model",
+      url: "https://api.test.com",
+      npm: "@ai-sdk/openai",
+    },
+    name: "Test Model",
+    capabilities: {
+      temperature: true,
+      reasoning: true,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: {
+      input: 0.001,
+      output: 0.002,
+      cache: { read: 0.0001, write: 0.0002 },
+    },
+    limit: {
+      context: 128000,
+      output: 8192,
+    },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "2024-01-01",
+    ...overrides,
+  })
+
+  describe("anthropic providers", () => {
+    test("wraps options with 'anthropic' key for @ai-sdk/anthropic", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-3-5-sonnet",
+        providerID: "anthropic",
+        api: {
+          id: "claude-3-5-sonnet-20241022",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+      })
+      const options = { thinking: { type: "enabled", budgetTokens: 16000 } }
+      const result = ProviderTransform.providerOptions(model, options)
+      expect(result).toEqual({
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      })
+    })
+
+    test("wraps options with 'anthropic' key for @ai-sdk/google-vertex/anthropic", () => {
+      const model = createMockModel({
+        id: "google-vertex-anthropic/claude-opus-4-5@20251101",
+        providerID: "google-vertex-anthropic",
+        api: {
+          id: "claude-opus-4-5@20251101",
+          url: "https://vertexai.googleapis.com",
+          npm: "@ai-sdk/google-vertex/anthropic",
+        },
+      })
+      const options = { thinking: { type: "enabled", budgetTokens: 16000 } }
+      const result = ProviderTransform.providerOptions(model, options)
+      expect(result).toEqual({
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      })
+    })
+  })
+
+  describe("google providers", () => {
+    test("wraps options with 'google' key for @ai-sdk/google-vertex", () => {
+      const model = createMockModel({
+        id: "google-vertex/gemini-2.5-pro",
+        providerID: "google-vertex",
+        api: {
+          id: "gemini-2.5-pro",
+          url: "https://vertexai.googleapis.com",
+          npm: "@ai-sdk/google-vertex",
+        },
+      })
+      const options = { thinkingConfig: { thinkingBudget: 16000 } }
+      const result = ProviderTransform.providerOptions(model, options)
+      expect(result).toEqual({
+        google: { thinkingConfig: { thinkingBudget: 16000 } },
+      })
+    })
+  })
+
+  describe("openai providers", () => {
+    test("wraps options with 'openai' key for @ai-sdk/openai", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5",
+        providerID: "openai",
+        api: {
+          id: "gpt-5",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
+        },
+      })
+      const options = { reasoningEffort: "high" }
+      const result = ProviderTransform.providerOptions(model, options)
+      expect(result).toEqual({
+        openai: { reasoningEffort: "high" },
+      })
+    })
+  })
+
+  describe("custom providers", () => {
+    test("wraps options with providerID when npm package has no sdkKey mapping", () => {
+      const model = createMockModel({
+        id: "custom/model",
+        providerID: "custom-provider",
+        api: {
+          id: "model",
+          url: "https://api.custom.com",
+          npm: "@ai-sdk/custom",
+        },
+      })
+      const options = { customOption: true }
+      const result = ProviderTransform.providerOptions(model, options)
+      expect(result).toEqual({
+        "custom-provider": { customOption: true },
+      })
     })
   })
 })
