@@ -2013,69 +2013,6 @@ test("all variants can be disabled via config", async () => {
   })
 })
 
-test("google-vertex-anthropic transforms npm package to subpath import", () => {
-  // This test verifies that even though models.dev returns "@ai-sdk/google-vertex" as the npm package,
-  // we correctly transform it to "@ai-sdk/google-vertex/anthropic" for proper variant generation
-  const provider = {
-    id: "google-vertex-anthropic",
-    npm: "@ai-sdk/google-vertex",
-    api: "https://vertexai.googleapis.com",
-  }
-  const modelData = {
-    id: "claude-opus-4-5@20251101",
-    name: "Claude Opus 4.5",
-    family: "claude-opus",
-    reasoning: true,
-    attachment: true,
-    tool_call: true,
-    temperature: true,
-    limit: { context: 200000, output: 64000 },
-  }
-
-  const model = Provider.fromModelsDevModel(provider as any, modelData as any)
-
-  expect(model.api.npm).toBe("@ai-sdk/google-vertex/anthropic")
-  expect(model.providerID).toBe("google-vertex-anthropic")
-})
-
-test("google-vertex-anthropic generates thinking variants from transformed npm package", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "opencode.json"),
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-        }),
-      )
-    },
-  })
-  await Instance.provide({
-    directory: tmp.path,
-    init: async () => {
-      Env.set("GOOGLE_CLOUD_PROJECT", "test-project")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      expect(providers["google-vertex-anthropic"]).toBeDefined()
-      const model = providers["google-vertex-anthropic"].models["claude-opus-4-5@20251101"]
-      expect(model).toBeDefined()
-      expect(model.api.npm).toBe("@ai-sdk/google-vertex/anthropic")
-      expect(model.capabilities.reasoning).toBe(true)
-      expect(model.variants).toBeDefined()
-      expect(model.variants!["high"]).toBeDefined()
-      expect(model.variants!["max"]).toBeDefined()
-      expect(model.variants!["high"].thinking).toEqual({
-        type: "enabled",
-        budgetTokens: 16000,
-      })
-      expect(model.variants!["max"].thinking).toEqual({
-        type: "enabled",
-        budgetTokens: 31999,
-      })
-    },
-  })
-})
-
 test("variant config merges with generated variants", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

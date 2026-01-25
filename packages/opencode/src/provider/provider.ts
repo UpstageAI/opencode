@@ -592,7 +592,7 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
-  export function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
+  function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
     const m: Model = {
       id: model.id,
       providerID: provider.id,
@@ -603,7 +603,6 @@ export namespace Provider {
         url: provider.api!,
         npm: iife(() => {
           if (provider.id.startsWith("github-copilot")) return "@ai-sdk/github-copilot"
-          if (provider.id === "google-vertex-anthropic") return "@ai-sdk/google-vertex/anthropic"
           return model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
         }),
       },
