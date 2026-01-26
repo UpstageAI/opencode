@@ -90,25 +90,32 @@ export async function GET() {
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "OpenCode-Console",
     },
-  })
+    cf: {
+      cacheTtl: 60 * 5,
+      cacheEverything: true,
+    },
+  } as RequestInit)
 
   if (!response.ok) {
-    return { releases: [] }
+    return Response.json({ releases: [] }, { status: 502 })
   }
 
   const releases = (await response.json()) as Release[]
 
-  return {
-    releases: releases.map((release) => {
-      const parsed = parseMarkdown(release.body || "")
-      return {
-        tag: release.tag_name,
-        name: release.name,
-        date: release.published_at,
-        url: release.html_url,
-        highlights: parsed.highlights,
-        sections: parsed.sections,
-      }
-    }),
-  }
+  return Response.json(
+    {
+      releases: releases.map((release) => {
+        const parsed = parseMarkdown(release.body || "")
+        return {
+          tag: release.tag_name,
+          name: release.name,
+          date: release.published_at,
+          url: release.html_url,
+          highlights: parsed.highlights,
+          sections: parsed.sections,
+        }
+      }),
+    },
+    { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
+  )
 }
