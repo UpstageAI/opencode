@@ -13,9 +13,9 @@
 - Keep things in one function unless composable or reusable
 - Avoid `try`/`catch` where possible
 - Avoid using the `any` type
-- Use Bun APIs when possible (e.g., `Bun.file()` instead of `fs.existsSync()`)
-- For sync file reads, use `readFileSync` from `fs` (Bun.file is async-only)
-- Avoid generated file artifacts - prefer build-time `define` globals for bundled data
+- Prefer single word variable names where possible
+- Use Bun APIs when possible, like `Bun.file()`
+- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
 
 ### Naming
 
