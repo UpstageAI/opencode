@@ -674,7 +674,7 @@ export namespace MessageV2 {
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message"),
     }),
-    async (input) => {
+    async (input): Promise<WithParts> => {
       const row = Database.use((db) => db.select().from(MessageTable).where(eq(MessageTable.id, input.messageID)).get())
       if (!row) throw new Error(`Message not found: ${input.messageID}`)
       const info = { ...row.data, id: row.id, sessionID: row.session_id } as MessageV2.Info
@@ -700,6 +700,13 @@ export namespace MessageV2 {
     }
     result.reverse()
     return result
+  }
+
+  const isOpenAiErrorRetryable = (e: APICallError) => {
+    const status = e.statusCode
+    if (!status) return e.isRetryable
+    // openai sometimes returns 404 for models that are actually available
+    return status === 404 || e.isRetryable
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {
@@ -770,7 +777,7 @@ export namespace MessageV2 {
           {
             message,
             statusCode: e.statusCode,
-            isRetryable: e.isRetryable,
+            isRetryable: ctx.providerID.startsWith("openai") ? isOpenAiErrorRetryable(e) : e.isRetryable,
             responseHeaders: e.responseHeaders,
             responseBody: e.responseBody,
             metadata,
