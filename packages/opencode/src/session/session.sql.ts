@@ -67,14 +67,16 @@ export const TodoTable = sqliteTable(
     session_id: text()
       .notNull()
       .references(() => SessionTable.id, { onDelete: "cascade" }),
-    id: text().notNull(),
     content: text().notNull(),
     status: text().notNull(),
     priority: text().notNull(),
     position: integer().notNull(),
     ...Timestamps,
   },
-  (table) => [primaryKey({ columns: [table.session_id, table.id] }), index("todo_session_idx").on(table.session_id)],
+  (table) => [
+    primaryKey({ columns: [table.session_id, table.position] }),
+    index("todo_session_idx").on(table.session_id),
+  ],
 )
 
 export const PermissionTable = sqliteTable("permission", {

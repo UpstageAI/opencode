@@ -235,14 +235,15 @@ export namespace JsonMigration {
         }
         for (let position = 0; position < data.length; position++) {
           const todo = data[position]
-          if (!todo?.id || !todo?.content || !todo?.status || !todo?.priority) continue
+          if (!todo?.content || !todo?.status || !todo?.priority) continue
           values.push({
             session_id: sessionID,
-            id: todo.id,
             content: todo.content,
             status: todo.status,
             priority: todo.priority,
             position,
+            time_created: Date.now(),
+            time_updated: Date.now(),
           })
         }
       }

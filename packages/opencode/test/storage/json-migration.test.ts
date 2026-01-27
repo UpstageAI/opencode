@@ -282,15 +282,52 @@ describe("JSON to SQLite migration", () => {
     expect(stats?.todos).toBe(2)
 
     const db = drizzle({ client: sqlite })
-    const todos = db.select().from(TodoTable).all()
+    const todos = db.select().from(TodoTable).orderBy(TodoTable.position).all()
     expect(todos.length).toBe(2)
-    expect(todos[0].id).toBe("todo_1")
     expect(todos[0].content).toBe("First todo")
     expect(todos[0].status).toBe("pending")
     expect(todos[0].priority).toBe("high")
     expect(todos[0].position).toBe(0)
-    expect(todos[1].id).toBe("todo_2")
+    expect(todos[1].content).toBe("Second todo")
     expect(todos[1].position).toBe(1)
+  })
+
+  test("todos are ordered by position", async () => {
+    await Bun.write(
+      path.join(storageDir, "project", "proj_test123abc.json"),
+      JSON.stringify({
+        id: "proj_test123abc",
+        worktree: "/",
+        time: { created: Date.now(), updated: Date.now() },
+        sandboxes: [],
+      }),
+    )
+    await Bun.write(
+      path.join(storageDir, "session", "proj_test123abc", "ses_test456def.json"),
+      JSON.stringify({ ...fixtures.session }),
+    )
+
+    await Bun.write(
+      path.join(storageDir, "todo", "ses_test456def.json"),
+      JSON.stringify([
+        { content: "Third", status: "pending", priority: "low" },
+        { content: "First", status: "pending", priority: "high" },
+        { content: "Second", status: "in_progress", priority: "medium" },
+      ]),
+    )
+
+    await JsonMigration.run(sqlite)
+
+    const db = drizzle({ client: sqlite })
+    const todos = db.select().from(TodoTable).orderBy(TodoTable.position).all()
+
+    expect(todos.length).toBe(3)
+    expect(todos[0].content).toBe("Third")
+    expect(todos[0].position).toBe(0)
+    expect(todos[1].content).toBe("First")
+    expect(todos[1].position).toBe(1)
+    expect(todos[2].content).toBe("Second")
+    expect(todos[2].position).toBe(2)
   })
 
   test("migrates permissions", async () => {

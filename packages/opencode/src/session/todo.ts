@@ -10,7 +10,6 @@ export namespace Todo {
       content: z.string().describe("Brief description of the task"),
       status: z.string().describe("Current status of the task: pending, in_progress, completed, cancelled"),
       priority: z.string().describe("Priority level of the task: high, medium, low"),
-      id: z.string().describe("Unique identifier for the todo item"),
     })
     .meta({ ref: "Todo" })
   export type Info = z.infer<typeof Info>
@@ -33,7 +32,6 @@ export namespace Todo {
         .values(
           input.todos.map((todo, position) => ({
             session_id: input.sessionID,
-            id: todo.id,
             content: todo.content,
             status: todo.status,
             priority: todo.priority,
@@ -50,7 +48,6 @@ export namespace Todo {
       db.select().from(TodoTable).where(eq(TodoTable.session_id, sessionID)).orderBy(asc(TodoTable.position)).all(),
     )
     return rows.map((row) => ({
-      id: row.id,
       content: row.content,
       status: row.status,
       priority: row.priority,
