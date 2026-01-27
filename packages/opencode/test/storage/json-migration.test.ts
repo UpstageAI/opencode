@@ -196,11 +196,11 @@ describe("JSON to SQLite migration", () => {
     const db = drizzle({ client: sqlite })
     const messages = db.select().from(MessageTable).all()
     expect(messages.length).toBe(1)
-    expect(messages[0].data.id).toBe("msg_test789ghi")
+    expect(messages[0].id).toBe("msg_test789ghi")
 
     const parts = db.select().from(PartTable).all()
     expect(parts.length).toBe(1)
-    expect(parts[0].data.id).toBe("prt_testabc123")
+    expect(parts[0].id).toBe("prt_testabc123")
   })
 
   test("skips orphaned sessions (no parent project)", async () => {

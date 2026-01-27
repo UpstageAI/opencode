@@ -14,7 +14,8 @@ CREATE TABLE `project` (
 CREATE TABLE `message` (
 	`id` text PRIMARY KEY,
 	`session_id` text NOT NULL,
-	`created_at` integer NOT NULL,
+	`time_created` integer NOT NULL,
+	`time_updated` integer NOT NULL,
 	`data` text NOT NULL,
 	CONSTRAINT `fk_message_session_id_session_id_fk` FOREIGN KEY (`session_id`) REFERENCES `session`(`id`) ON DELETE CASCADE
 );
@@ -23,12 +24,16 @@ CREATE TABLE `part` (
 	`id` text PRIMARY KEY,
 	`message_id` text NOT NULL,
 	`session_id` text NOT NULL,
+	`time_created` integer NOT NULL,
+	`time_updated` integer NOT NULL,
 	`data` text NOT NULL,
 	CONSTRAINT `fk_part_message_id_message_id_fk` FOREIGN KEY (`message_id`) REFERENCES `message`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
 CREATE TABLE `permission` (
 	`project_id` text PRIMARY KEY,
+	`time_created` integer NOT NULL,
+	`time_updated` integer NOT NULL,
 	`data` text NOT NULL,
 	CONSTRAINT `fk_permission_project_id_project_id_fk` FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON DELETE CASCADE
 );
@@ -46,10 +51,7 @@ CREATE TABLE `session` (
 	`summary_deletions` integer,
 	`summary_files` integer,
 	`summary_diffs` text,
-	`revert_message_id` text,
-	`revert_part_id` text,
-	`revert_snapshot` text,
-	`revert_diff` text,
+	`revert` text,
 	`permission` text,
 	`time_created` integer NOT NULL,
 	`time_updated` integer NOT NULL,
@@ -65,6 +67,8 @@ CREATE TABLE `todo` (
 	`status` text NOT NULL,
 	`priority` text NOT NULL,
 	`position` integer NOT NULL,
+	`time_created` integer NOT NULL,
+	`time_updated` integer NOT NULL,
 	CONSTRAINT `todo_pk` PRIMARY KEY(`session_id`, `id`),
 	CONSTRAINT `fk_todo_session_id_session_id_fk` FOREIGN KEY (`session_id`) REFERENCES `session`(`id`) ON DELETE CASCADE
 );
@@ -74,6 +78,8 @@ CREATE TABLE `session_share` (
 	`id` text NOT NULL,
 	`secret` text NOT NULL,
 	`url` text NOT NULL,
+	`time_created` integer NOT NULL,
+	`time_updated` integer NOT NULL,
 	CONSTRAINT `fk_session_share_session_id_session_id_fk` FOREIGN KEY (`session_id`) REFERENCES `session`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint

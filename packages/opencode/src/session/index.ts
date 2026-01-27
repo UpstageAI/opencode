@@ -54,15 +54,7 @@ export namespace Session {
           }
         : undefined
     const share = row.share_url ? { url: row.share_url } : undefined
-    const revert =
-      row.revert_message_id !== null
-        ? {
-            messageID: row.revert_message_id,
-            partID: row.revert_part_id ?? undefined,
-            snapshot: row.revert_snapshot ?? undefined,
-            diff: row.revert_diff ?? undefined,
-          }
-        : undefined
+    const revert = row.revert ?? undefined
     return {
       id: row.id,
       slug: row.slug,
@@ -98,10 +90,7 @@ export namespace Session {
       summary_deletions: info.summary?.deletions,
       summary_files: info.summary?.files,
       summary_diffs: info.summary?.diffs,
-      revert_message_id: info.revert?.messageID ?? null,
-      revert_part_id: info.revert?.partID ?? null,
-      revert_snapshot: info.revert?.snapshot ?? null,
-      revert_diff: info.revert?.diff ?? null,
+      revert: info.revert ?? null,
       permission: info.permission,
       time_created: info.time.created,
       time_updated: info.time.updated,
@@ -415,10 +404,7 @@ export namespace Session {
         const row = db
           .update(SessionTable)
           .set({
-            revert_message_id: input.revert?.messageID ?? null,
-            revert_part_id: input.revert?.partID ?? null,
-            revert_snapshot: input.revert?.snapshot ?? null,
-            revert_diff: input.revert?.diff ?? null,
+            revert: input.revert ?? null,
             summary_additions: input.summary?.additions,
             summary_deletions: input.summary?.deletions,
             summary_files: input.summary?.files,
@@ -440,10 +426,7 @@ export namespace Session {
       const row = db
         .update(SessionTable)
         .set({
-          revert_message_id: null,
-          revert_part_id: null,
-          revert_snapshot: null,
-          revert_diff: null,
+          revert: null,
           time_updated: Date.now(),
         })
         .where(eq(SessionTable.id, sessionID))
@@ -544,16 +527,17 @@ export namespace Session {
   })
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    const created_at = msg.role === "user" ? msg.time.created : msg.time.created
+    const time_created = msg.role === "user" ? msg.time.created : msg.time.created
+    const { id, sessionID, ...data } = msg
     Database.use((db) => {
       db.insert(MessageTable)
         .values({
-          id: msg.id,
-          session_id: msg.sessionID,
-          created_at,
-          data: msg,
+          id,
+          session_id: sessionID,
+          time_created,
+          data,
         })
-        .onConflictDoUpdate({ target: MessageTable.id, set: { data: msg } })
+        .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
         .run()
       Database.effect(() =>
         Bus.publish(MessageV2.Event.Updated, {
@@ -620,15 +604,18 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
+    const { id, messageID, sessionID, ...data } = part
+    const time = Date.now()
     Database.use((db) => {
       db.insert(PartTable)
         .values({
-          id: part.id,
-          message_id: part.messageID,
-          session_id: part.sessionID,
-          data: part,
+          id,
+          message_id: messageID,
+          session_id: sessionID,
+          time_created: time,
+          data,
         })
-        .onConflictDoUpdate({ target: PartTable.id, set: { data: part } })
+        .onConflictDoUpdate({ target: PartTable.id, set: { data } })
         .run()
       Database.effect(() =>
         Bus.publish(MessageV2.Event.PartUpdated, {

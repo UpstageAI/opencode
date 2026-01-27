@@ -616,7 +616,7 @@ export namespace MessageV2 {
           .select()
           .from(MessageTable)
           .where(eq(MessageTable.session_id, sessionID))
-          .orderBy(desc(MessageTable.created_at))
+          .orderBy(desc(MessageTable.time_created))
           .limit(size)
           .offset(offset)
           .all(),
@@ -635,15 +635,22 @@ export namespace MessageV2 {
             .all(),
         )
         for (const row of partRows) {
+          const part = {
+            ...row.data,
+            id: row.id,
+            sessionID: row.session_id,
+            messageID: row.message_id,
+          } as MessageV2.Part
           const list = partsByMessage.get(row.message_id)
-          if (list) list.push(row.data)
-          else partsByMessage.set(row.message_id, [row.data])
+          if (list) list.push(part)
+          else partsByMessage.set(row.message_id, [part])
         }
       }
 
       for (const row of rows) {
+        const info = { ...row.data, id: row.id, sessionID: row.session_id } as MessageV2.Info
         yield {
-          info: row.data,
+          info,
           parts: partsByMessage.get(row.id) ?? [],
         }
       }
@@ -657,7 +664,9 @@ export namespace MessageV2 {
     const rows = Database.use((db) =>
       db.select().from(PartTable).where(eq(PartTable.message_id, message_id)).orderBy(PartTable.id).all(),
     )
-    return rows.map((row) => row.data)
+    return rows.map(
+      (row) => ({ ...row.data, id: row.id, sessionID: row.session_id, messageID: row.message_id }) as MessageV2.Part,
+    )
   })
 
   export const get = fn(
@@ -668,8 +677,9 @@ export namespace MessageV2 {
     async (input) => {
       const row = Database.use((db) => db.select().from(MessageTable).where(eq(MessageTable.id, input.messageID)).get())
       if (!row) throw new Error(`Message not found: ${input.messageID}`)
+      const info = { ...row.data, id: row.id, sessionID: row.session_id } as MessageV2.Info
       return {
-        info: row.data,
+        info,
         parts: await parts(input.messageID),
       }
     },

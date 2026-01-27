@@ -118,10 +118,7 @@ export namespace JsonMigration {
           summary_deletions: data.summary?.deletions ?? null,
           summary_files: data.summary?.files ?? null,
           summary_diffs: data.summary?.diffs ?? null,
-          revert_message_id: data.revert?.messageID ?? null,
-          revert_part_id: data.revert?.partID ?? null,
-          revert_snapshot: data.revert?.snapshot ?? null,
-          revert_diff: data.revert?.diff ?? null,
+          revert: data.revert ?? null,
           permission: data.permission ?? null,
           time_created: data.time?.created ?? Date.now(),
           time_updated: data.time?.updated ?? Date.now(),
@@ -159,11 +156,13 @@ export namespace JsonMigration {
                 stats.errors.push(`message missing id: ${item.file}`)
                 continue
               }
+              const { id, sessionID: _, ...rest } = data
               values.push({
                 id: data.id,
                 session_id: sessionID,
-                created_at: data.time?.created ?? Date.now(),
-                data,
+                time_created: data.time?.created ?? Date.now(),
+                time_updated: data.time?.updated ?? Date.now(),
+                data: rest,
               })
               messageIds.add(data.id)
             }
@@ -191,11 +190,14 @@ export namespace JsonMigration {
                       stats.errors.push(`part missing id or messageID: ${item.file}`)
                       continue
                     }
+                    const { id, messageID, sessionID: _, ...rest } = data
                     values.push({
                       id: data.id,
                       message_id: data.messageID,
                       session_id: sessionID,
-                      data,
+                      time_created: data.time?.created ?? Date.now(),
+                      time_updated: data.time?.updated ?? Date.now(),
+                      data: rest,
                     })
                   }
                   if (values.length === 0) continue
