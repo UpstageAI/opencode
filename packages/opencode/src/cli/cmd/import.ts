@@ -91,7 +91,7 @@ export const ImportCommand = cmd({
             .values({
               id: msg.info.id,
               session_id: exportData.info.id,
-              created_at: msg.info.time?.created ?? Date.now(),
+              time_created: msg.info.time?.created ?? Date.now(),
               data: msg.info,
             })
             .onConflictDoNothing()
