@@ -324,6 +324,7 @@ export default function Page() {
   }
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
+  const centered = createMemo(() => isDesktop() && !layout.fileTree.opened())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -478,6 +479,12 @@ export default function Page() {
     const targetIndex = currentIndex === -1 ? (offset > 0 ? 0 : msgs.length - 1) : currentIndex + offset
     if (targetIndex < 0 || targetIndex >= msgs.length) return
 
+    if (targetIndex === msgs.length - 1) {
+      resumeScroll()
+      return
+    }
+
+    autoScroll.pause()
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
@@ -524,14 +531,7 @@ export default function Page() {
 
   const scrollGestureWindowMs = 250
 
-  const scrollIgnoreWindowMs = 250
-  let scrollIgnore = 0
-
-  const markScrollIgnore = () => {
-    scrollIgnore = Date.now()
-  }
-
-  const hasScrollIgnore = () => Date.now() - scrollIgnore < scrollIgnoreWindowMs
+  let touchGesture: number | undefined
 
   const markScrollGesture = (target?: EventTarget | null) => {
     const root = scroller
@@ -730,8 +730,8 @@ export default function Page() {
       onSelect: () => view().terminal.toggle(),
     },
     {
-      id: "fileTree.toggle",
-      title: language.t("command.fileTree.toggle"),
+      id: "review.toggle",
+      title: language.t("command.review.toggle"),
       description: "",
       category: language.t("command.category.view"),
       keybind: "mod+shift+r",
@@ -1127,6 +1127,46 @@ export default function Page() {
     setFileTreeTab("all")
   }
 
+  const reviewPanel = () => (
+    <div class="flex flex-col h-full overflow-hidden bg-background-stronger contain-strict">
+      <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
+        <Switch>
+          <Match when={hasReview()}>
+            <Show
+              when={diffsReady()}
+              fallback={<div class="px-6 py-4 text-text-weak">{language.t("session.review.loadingChanges")}</div>}
+            >
+              <SessionReviewTab
+                diffs={diffs}
+                view={view}
+                diffStyle={layout.review.diffStyle()}
+                onDiffStyleChange={layout.review.setDiffStyle}
+                onScrollRef={setReviewScroll}
+                focusedFile={activeDiff()}
+                onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
+                comments={comments.all()}
+                focusedComment={comments.focus()}
+                onFocusedCommentChange={comments.setFocus}
+                onViewFile={(path) => {
+                  showAllFiles()
+                  const value = file.tab(path)
+                  tabs().open(value)
+                  file.load(path)
+                }}
+              />
+            </Show>
+          </Match>
+          <Match when={true}>
+            <div class="h-full px-6 pb-30 flex flex-col items-center justify-center text-center gap-6">
+              <Mark class="w-14 opacity-10" />
+              <div class="text-14-regular text-text-weak max-w-56">{language.t("session.review.empty")}</div>
+            </div>
+          </Match>
+        </Switch>
+      </div>
+    </div>
+  )
+
   createEffect(
     on(
       () => tabs().active(),
@@ -1252,37 +1292,21 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop() ? fileTreeTab() === "changes" : store.mobileTab === "changes"
+    const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : store.mobileTab === "changes"
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
+    if (sync.status === "loading") return
 
-    const state = {
-      cancelled: false,
-      attempt: 0,
-      timer: undefined as number | undefined,
-    }
+    void sync.session.diff(id)
+  })
 
-    const load = () => {
-      if (state.cancelled) return
-      const pending = sync.session.diff(id)
-      if (!pending) return
-      pending.catch(() => {
-        if (state.cancelled) return
-        const attempt = state.attempt + 1
-        state.attempt = attempt
-        if (attempt > 5) return
-        if (state.timer !== undefined) clearTimeout(state.timer)
-        const wait = Math.min(10000, 250 * 2 ** (attempt - 1))
-        state.timer = window.setTimeout(load, wait)
-      })
-    }
+  createEffect(() => {
+    if (!isDesktop()) return
+    if (!layout.fileTree.opened()) return
+    if (sync.status === "loading") return
 
-    load()
-
-    onCleanup(() => {
-      state.cancelled = true
-      if (state.timer !== undefined) clearTimeout(state.timer)
-    })
+    fileTreeTab()
+    void file.tree.list("")
   })
 
   const autoScroll = createAutoScroll({
@@ -1290,9 +1314,15 @@ export default function Page() {
     overflowAnchor: "dynamic",
   })
 
+  const clearMessageHash = () => {
+    if (!window.location.hash) return
+    window.history.replaceState(null, "", window.location.href.replace(/#.*$/, ""))
+  }
+
   const resumeScroll = () => {
     setStore("messageId", undefined)
     autoScroll.forceScrollToBottom()
+    clearMessageHash()
   }
 
   // When the user returns to the bottom, treat the active message as "latest".
@@ -1302,6 +1332,7 @@ export default function Page() {
       (scrolled) => {
         if (scrolled) return
         setStore("messageId", undefined)
+        clearMessageHash()
       },
       { defer: true },
     ),
@@ -1377,7 +1408,6 @@ export default function Page() {
     requestAnimationFrame(() => {
       const delta = el.scrollHeight - beforeHeight
       if (!delta) return
-      markScrollIgnore()
       el.scrollTop = beforeTop + delta
     })
 
@@ -1415,7 +1445,6 @@ export default function Page() {
 
       if (stick && el) {
         requestAnimationFrame(() => {
-          markScrollIgnore()
           el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
         })
       }
@@ -1510,6 +1539,7 @@ export default function Page() {
 
     const match = hash.match(/^message-(.+)$/)
     if (match) {
+      autoScroll.pause()
       const msg = visibleUserMessages().find((m) => m.id === match[1])
       if (msg) {
         scrollToMessage(msg, behavior)
@@ -1523,6 +1553,7 @@ export default function Page() {
 
     const target = document.getElementById(hash)
     if (target) {
+      autoScroll.pause()
       scrollToElement(target, behavior)
       return
     }
@@ -1619,6 +1650,7 @@ export default function Page() {
     const msg = visibleUserMessages().find((m) => m.id === targetId)
     if (!msg) return
     if (ui.pendingMessage === targetId) setUi("pendingMessage", undefined)
+    autoScroll.pause()
     requestAnimationFrame(() => scrollToMessage(msg, "auto"))
   })
 
@@ -1729,10 +1761,11 @@ export default function Page() {
         <div
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-            "flex-1 md:flex-none pt-6 md:pt-3": true,
+            "flex-1 pt-6 md:pt-3": true,
+            "md:flex-none": layout.fileTree.opened(),
           }}
           style={{
-            width: isDesktop() ? `${layout.session.width()}px` : "100%",
+            width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
             "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
           }}
         >
@@ -1799,28 +1832,102 @@ export default function Page() {
                       >
                         <button
                           class="pointer-events-auto size-8 flex items-center justify-center rounded-full bg-background-base border border-border-base shadow-sm text-text-base hover:bg-background-stronger transition-colors"
-                          onClick={() => {
-                            setStore("messageId", undefined)
-                            autoScroll.forceScrollToBottom()
-                            window.history.replaceState(null, "", window.location.href.replace(/#.*$/, ""))
-                          }}
+                          onClick={resumeScroll}
                         >
                           <Icon name="arrow-down-to-line" />
                         </button>
                       </div>
                       <div
                         ref={setScrollRef}
-                        onWheel={(e) => markScrollGesture(e.target)}
-                        onTouchMove={(e) => markScrollGesture(e.target)}
+                        onWheel={(e) => {
+                          const root = e.currentTarget
+                          const target = e.target instanceof Element ? e.target : undefined
+                          const nested = target?.closest("[data-scrollable]")
+                          if (!nested || nested === root) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          if (!(nested instanceof HTMLElement)) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          const max = nested.scrollHeight - nested.clientHeight
+                          if (max <= 1) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          const delta =
+                            e.deltaMode === 1
+                              ? e.deltaY * 40
+                              : e.deltaMode === 2
+                                ? e.deltaY * root.clientHeight
+                                : e.deltaY
+                          if (!delta) return
+
+                          if (delta < 0) {
+                            if (nested.scrollTop + delta <= 0) markScrollGesture(root)
+                            return
+                          }
+
+                          const remaining = max - nested.scrollTop
+                          if (delta > remaining) markScrollGesture(root)
+                        }}
+                        onTouchStart={(e) => {
+                          touchGesture = e.touches[0]?.clientY
+                        }}
+                        onTouchMove={(e) => {
+                          const next = e.touches[0]?.clientY
+                          const prev = touchGesture
+                          touchGesture = next
+                          if (next === undefined || prev === undefined) return
+
+                          const delta = prev - next
+                          if (!delta) return
+
+                          const root = e.currentTarget
+                          const target = e.target instanceof Element ? e.target : undefined
+                          const nested = target?.closest("[data-scrollable]")
+                          if (!nested || nested === root) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          if (!(nested instanceof HTMLElement)) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          const max = nested.scrollHeight - nested.clientHeight
+                          if (max <= 1) {
+                            markScrollGesture(root)
+                            return
+                          }
+
+                          if (delta < 0) {
+                            if (nested.scrollTop + delta <= 0) markScrollGesture(root)
+                            return
+                          }
+
+                          const remaining = max - nested.scrollTop
+                          if (delta > remaining) markScrollGesture(root)
+                        }}
+                        onTouchEnd={() => {
+                          touchGesture = undefined
+                        }}
+                        onTouchCancel={() => {
+                          touchGesture = undefined
+                        }}
                         onPointerDown={(e) => {
                           if (e.target !== e.currentTarget) return
-                          markScrollGesture(e.target)
+                          markScrollGesture(e.currentTarget)
                         }}
                         onScroll={(e) => {
-                          const gesture = hasScrollGesture()
-                          if (!hasScrollIgnore() || gesture) autoScroll.handleScroll()
-                          if (!gesture) return
-                          markScrollGesture(e.target)
+                          if (!hasScrollGesture()) return
+                          autoScroll.handleScroll()
+                          markScrollGesture(e.currentTarget)
                           if (isDesktop()) scheduleScrollSpy(e.currentTarget)
                         }}
                         onClick={autoScroll.handleInteraction}
@@ -1833,6 +1940,7 @@ export default function Page() {
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
                               "px-4 md:px-6": true,
+                              "md:max-w-200 md:mx-auto": centered(),
                             }}
                           >
                             <div class="h-10 flex items-center gap-1">
@@ -1857,7 +1965,13 @@ export default function Page() {
                         <div
                           ref={autoScroll.contentRef}
                           role="log"
-                          class="flex flex-col gap-32 items-start justify-start w-full mt-0 pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+                          class="flex flex-col gap-32 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+                          classList={{
+                            "w-full": true,
+                            "md:max-w-200 md:mx-auto": centered(),
+                            "mt-0.5": centered(),
+                            "mt-0": !centered(),
+                          }}
                         >
                           <Show when={store.turnStart > 0}>
                             <div class="w-full flex justify-center">
@@ -1905,7 +2019,10 @@ export default function Page() {
                                 <div
                                   id={anchor(message.id)}
                                   data-message-id={message.id}
-                                  class="min-w-0 w-full max-w-full"
+                                  classList={{
+                                    "min-w-0 w-full max-w-full": true,
+                                    "md:max-w-200": centered(),
+                                  }}
                                 >
                                   <SessionTurn
                                     sessionID={params.id!}
@@ -1958,7 +2075,12 @@ export default function Page() {
             ref={(el) => (promptDock = el)}
             class="absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none"
           >
-            <div class="w-full px-4 pointer-events-auto">
+            <div
+              classList={{
+                "w-full px-4 pointer-events-auto": true,
+                "md:max-w-200 md:mx-auto": centered(),
+              }}
+            >
               <Show when={request()} keyed>
                 {(perm) => (
                   <div data-component="tool-part-wrapper" data-permission="true" class="mb-3">
@@ -2029,7 +2151,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Show when={isDesktop()}>
+          <Show when={isDesktop() && layout.fileTree.opened()}>
             <ResizeHandle
               direction="horizontal"
               size={layout.session.width()}
@@ -2041,7 +2163,7 @@ export default function Page() {
         </div>
 
         {/* Desktop side panel - hidden on mobile */}
-        <Show when={isDesktop()}>
+        <Show when={isDesktop() && layout.fileTree.opened()}>
           <aside
             id="review-panel"
             aria-label={language.t("session.panel.reviewAndFiles")}
@@ -2645,47 +2767,7 @@ export default function Page() {
                   </DragDropProvider>
                 }
               >
-                <div class="flex flex-col h-full overflow-hidden bg-background-stronger contain-strict">
-                  <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
-                    <Switch>
-                      <Match when={hasReview()}>
-                        <Show
-                          when={diffsReady()}
-                          fallback={
-                            <div class="px-6 py-4 text-text-weak">{language.t("session.review.loadingChanges")}</div>
-                          }
-                        >
-                          <SessionReviewTab
-                            diffs={diffs}
-                            view={view}
-                            diffStyle={layout.review.diffStyle()}
-                            onDiffStyleChange={layout.review.setDiffStyle}
-                            onScrollRef={setReviewScroll}
-                            focusedFile={activeDiff()}
-                            onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
-                            comments={comments.all()}
-                            focusedComment={comments.focus()}
-                            onFocusedCommentChange={comments.setFocus}
-                            onViewFile={(path) => {
-                              showAllFiles()
-                              const value = file.tab(path)
-                              tabs().open(value)
-                              file.load(path)
-                            }}
-                          />
-                        </Show>
-                      </Match>
-                      <Match when={true}>
-                        <div class="h-full px-6 pb-30 flex flex-col items-center justify-center text-center gap-6">
-                          <Mark class="w-14 opacity-10" />
-                          <div class="text-14-regular text-text-weak max-w-56">
-                            {language.t("session.review.empty")}
-                          </div>
-                        </div>
-                      </Match>
-                    </Switch>
-                  </div>
-                </div>
+                {reviewPanel()}
               </Show>
             </div>
 

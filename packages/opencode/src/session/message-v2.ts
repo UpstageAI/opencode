@@ -177,6 +177,8 @@ export namespace MessageV2 {
       })
       .optional(),
     command: z.string().optional(),
+  }).meta({
+    ref: "SubtaskPart",
   })
   export type SubtaskPart = z.infer<typeof SubtaskPart>
 
