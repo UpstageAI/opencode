@@ -43,6 +43,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 uuid = { version = "1.19.0", features = ["v4"] }
 tauri-plugin-decorum = "1.1.1"
 comrak = { version = "0.50", default-features = false }
+url = "2"
+specta = { git = "https://github.com/specta-rs/specta", rev = "5409c179845bce2dc4a7315870c83c8d80c0dee4" }
+specta-typescript = { git = "https://github.com/specta-rs/specta", rev = "f1e55f8c774a9506e3ca6bec1265ce5dda6831a0" }
+tauri-specta = { git = "https://github.com/specta-rs/tauri-specta", rev = "c0cd3c58e29191845e2bd2b30238246469903727", features = ["derive", "typescript"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18.2"
@@ -59,3 +63,8 @@ windows = { version = "0.61", features = [
     "Win32_System_Threading",
     "Win32_Security"
 ] }
+
+[patch.crates-io]
+specta = { git = "https://github.com/specta-rs/specta", rev = "5409c179845bce2dc4a7315870c83c8d80c0dee4" }
+specta-typescript = { git = "https://github.com/specta-rs/specta", rev = "f1e55f8c774a9506e3ca6bec1265ce5dda6831a0" }
+tauri-specta = { git = "https://github.com/specta-rs/tauri-specta", rev = "c0cd3c58e29191845e2bd2b30238246469903727" }

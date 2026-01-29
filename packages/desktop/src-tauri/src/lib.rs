@@ -1,36 +1,42 @@
 mod cli;
+mod deep_link;
 #[cfg(windows)]
 mod job_object;
 mod markdown;
 mod window_customizer;
 
 use cli::{install_cli, sync_cli};
-use futures::FutureExt;
-use futures::future;
+use futures::channel::mpsc;
+use futures::{FutureExt, StreamExt};
+use futures::{SinkExt, future};
 #[cfg(windows)]
 use job_object::*;
+use specta_typescript::Typescript;
 use std::{
     collections::VecDeque,
     net::TcpListener,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, LogicalSize, Manager, RunEvent, State, WebviewWindowBuilder};
-#[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
-use tauri_plugin_deep_link::DeepLinkExt;
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, RunEvent, State, WebviewWindowBuilder};
 #[cfg(windows)]
 use tauri_plugin_decorum::WebviewWindowExt;
+use tauri_plugin_deep_link::DeepLinkExt;
+#[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogResult};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_store::StoreExt;
+use tauri_specta::{Builder, collect_commands};
 use tokio::sync::oneshot;
 
+use crate::deep_link::DeepLinkAction;
 use crate::window_customizer::PinchZoomDisablePlugin;
 
 const SETTINGS_STORE: &str = "opencode.settings.dat";
 const DEFAULT_SERVER_URL_KEY: &str = "defaultServerUrl";
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, specta::Type)]
 struct ServerReadyData {
     url: String,
     password: Option<String>,
@@ -64,6 +70,7 @@ struct LogState(Arc<Mutex<VecDeque<String>>>);
 const MAX_LOG_ENTRIES: usize = 200;
 
 #[tauri::command]
+#[specta::specta]
 fn kill_sidecar(app: AppHandle) {
     let Some(server_state) = app.try_state::<ServerState>() else {
         println!("Server not running");
@@ -97,6 +104,7 @@ async fn get_logs(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn ensure_server_ready(state: State<'_, ServerState>) -> Result<ServerReadyData, String> {
     state
         .status
@@ -106,6 +114,7 @@ async fn ensure_server_ready(state: State<'_, ServerState>) -> Result<ServerRead
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_default_server_url(app: AppHandle) -> Result<Option<String>, String> {
     let store = app
         .store(SETTINGS_STORE)
@@ -119,6 +128,7 @@ fn get_default_server_url(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn set_default_server_url(app: AppHandle, url: Option<String>) -> Result<(), String> {
     let store = app
         .store(SETTINGS_STORE)
@@ -257,6 +267,22 @@ pub fn run() {
         .arg("opencode-cli")
         .output();
 
+    let mut builder = Builder::<tauri::Wry>::new()
+        // Then register them (separated by a comma)
+        .commands(collect_commands![
+            kill_sidecar,
+            install_cli,
+            ensure_server_ready,
+            get_default_server_url,
+            set_default_server_url,
+            markdown::parse_markdown_command
+        ]);
+
+    #[cfg(debug_assertions)] // <- Only export on non-release builds
+    builder
+        .export(Typescript::default(), "../src/bindings.ts")
+        .expect("Failed to export typescript bindings");
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus existing window when another instance is launched
@@ -285,15 +311,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(PinchZoomDisablePlugin)
         .plugin(tauri_plugin_decorum::init())
-        .invoke_handler(tauri::generate_handler![
-            kill_sidecar,
-            install_cli,
-            ensure_server_ready,
-            get_default_server_url,
-            set_default_server_url,
-            markdown::parse_markdown_command
-        ])
+        .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
+            // This is also required if you want to use events
+            builder.mount_events(app);
+
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             app.deep_link().register_all().ok();
 
@@ -344,13 +366,27 @@ pub fn run() {
                 )
                 .decorations(false);
 
-            let window = window_builder.build().expect("Failed to create window");
+            let _window = window_builder.build().expect("Failed to create window");
 
             #[cfg(windows)]
-            let _ = window.create_overlay_titlebar();
+            let _ = _window.create_overlay_titlebar();
 
             let (tx, rx) = oneshot::channel();
             app.manage(ServerState::new(None, rx));
+
+            let (deeplink_tx, deeplink_rx) = mpsc::unbounded();
+
+            for url in app.deep_link().get_current().ok().flatten().unwrap_or_default() {
+              let _ = deeplink_tx.unbounded_send(url);
+            }
+
+            app.deep_link().on_open_url(move |e| {
+              for url in e.urls() {
+                let _ = deeplink_tx.unbounded_send(url);
+              }
+            });
+
+            let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
             {
                 let app = app.clone();
@@ -396,6 +432,25 @@ pub fn run() {
                         eprintln!("Failed to sync CLI: {e}");
                     }
                 });
+            }
+
+            {
+              let app = app.clone();
+              tauri::async_runtime::spawn(async move {
+                let Ok(_) = ready_rx.await else {
+                  return
+                };
+
+                tauri::async_runtime::spawn(deeplink_rx.for_each(move |url| {
+                    if let Some(action) = DeepLinkAction::from_url(url)
+                      && let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("opencode:deep-link", action);
+                    }
+
+                    future::ready(())
+                }));
+
+              });
             }
 
             Ok(())
