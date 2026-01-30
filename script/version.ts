@@ -6,14 +6,14 @@ import { buildNotes, getLatestRelease } from "./changelog"
 
 const output = [`version=${Script.version}`]
 
-if (!Script.preview) {
+if (!Script.preview || true) {
   const previous = await getLatestRelease()
   const notes = await buildNotes(previous, "HEAD")
   const body = notes.join("\n") || "No notable changes"
   const dir = process.env.RUNNER_TEMP ?? "/tmp"
   const file = `${dir}/opencode-release-notes.txt`
   await Bun.write(file, body)
-  await $`gh release create v${Script.version} -d --title "v${Script.version}" --notes-file ${file}`
+  await $`gh release create v${Script.version} -d --title "v${Script.version}" --notes-file ${file} --prerelease=${Script.preview}`
   const release = await $`gh release view v${Script.version} --json id,tagName`.json()
   output.push(`release=${release.id}`)
   output.push(`tag=${release.tagName}`)

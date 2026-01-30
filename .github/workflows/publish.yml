@@ -7,6 +7,7 @@ on:
       - ci
       - dev
       - beta
+      - workflow/publish-updates
       - snapshot-*
   workflow_dispatch:
     inputs:
@@ -49,7 +50,7 @@ jobs:
         run: |
           ./script/version.ts
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           OPENCODE_BUMP: ${{ inputs.bump }}
           OPENCODE_VERSION: ${{ inputs.version }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -76,7 +77,7 @@ jobs:
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           OPENCODE_RELEASE: ${{ needs.version.outputs.release }}
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -166,7 +167,7 @@ jobs:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ steps.committer.outputs.token }}
           RUST_TARGET: ${{ matrix.settings.target }}
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
       # Fixes AppImage build issues, can be removed when https://github.com/tauri-apps/tauri/pull/12491 is released
@@ -231,13 +232,6 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Setup git committer
-        id: committer
-        uses: ./.github/actions/setup-git-committer
-        with:
-          opencode-app-id: ${{ vars.OPENCODE_APP_ID }}
-          opencode-app-secret: ${{ secrets.OPENCODE_APP_SECRET }}
-
       - uses: actions/download-artifact@v4
         with:
           name: opencode-cli
@@ -261,6 +255,13 @@ jobs:
           git config --global user.email "opencode@sst.dev"
           git config --global user.name "opencode"
           ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts || true
+
+      - name: Setup git committer
+        id: committer
+        uses: ./.github/actions/setup-git-committer
+        with:
+          opencode-app-id: ${{ vars.OPENCODE_APP_ID }}
+          opencode-app-secret: ${{ secrets.OPENCODE_APP_SECRET }}
 
       - run: ./script/publish.ts
         env:
