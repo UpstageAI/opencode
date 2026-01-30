@@ -7,8 +7,8 @@ mod window_customizer;
 
 use cli::{install_cli, sync_cli};
 use futures::channel::mpsc;
+use futures::future;
 use futures::{FutureExt, StreamExt};
-use futures::{SinkExt, future};
 #[cfg(windows)]
 use job_object::*;
 use specta_typescript::Typescript;
@@ -27,7 +27,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogResult};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_store::StoreExt;
-use tauri_specta::{Builder, collect_commands};
+use tauri_specta::{Builder, Event, collect_commands, collect_events};
 use tokio::sync::oneshot;
 
 use crate::deep_link::DeepLinkAction;
@@ -258,6 +258,20 @@ async fn check_server_health(url: &str, password: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+struct AppState {
+    ready_tx: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn notify_ready(state: tauri::State<'_, AppState>) -> Result<(), ()> {
+    if let Some(ready_tx) = state.ready_tx.lock().await.take() {
+        let _ = ready_tx.send(());
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let updater_enabled = option_env!("TAURI_SIGNING_PRIVATE_KEY").is_some();
@@ -267,7 +281,7 @@ pub fn run() {
         .arg("opencode-cli")
         .output();
 
-    let mut builder = Builder::<tauri::Wry>::new()
+    let builder = Builder::<tauri::Wry>::new()
         // Then register them (separated by a comma)
         .commands(collect_commands![
             kill_sidecar,
@@ -275,8 +289,10 @@ pub fn run() {
             ensure_server_ready,
             get_default_server_url,
             set_default_server_url,
-            markdown::parse_markdown_command
-        ]);
+            markdown::parse_markdown_command,
+            notify_ready
+        ])
+        .events(collect_events![DeepLinkAction]);
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     builder
@@ -326,6 +342,11 @@ pub fn run() {
 
             #[cfg(windows)]
             app.manage(JobObjectState::new());
+
+            let (ready_tx, ready_rx) = oneshot::channel::<()>();
+            app.manage(AppState {
+              ready_tx: tokio::sync::Mutex::new(Some(ready_tx))
+            });
 
             let primary_monitor = app.primary_monitor().ok().flatten();
             let size = primary_monitor
@@ -386,8 +407,6 @@ pub fn run() {
               }
             });
 
-            let (ready_tx, ready_rx) = oneshot::channel::<()>();
-
             {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -444,7 +463,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(deeplink_rx.for_each(move |url| {
                     if let Some(action) = DeepLinkAction::from_url(url)
                       && let Some(window) = app.get_webview_window("main") {
-                        let _ = window.emit("opencode:deep-link", action);
+                        let _ = action.emit(&window);
                     }
 
                     future::ready(())

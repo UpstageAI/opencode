@@ -1079,6 +1079,9 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
+  createEffect(() => {
+    console.log({ ...value })
+  })
   return (
     <Switch>
       <Match when={value.ready}>

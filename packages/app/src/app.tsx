@@ -84,7 +84,7 @@ function ServerKey(props: ParentProps) {
   )
 }
 
-export function AppInterface(props: { defaultUrl?: string, root?: (props: ParentProps) => JSX.Element }) {
+export function AppInterface(props: { defaultUrl?: string; root?: (props: ParentProps) => JSX.Element }) {
   const platform = usePlatform()
 
   const stored = (() => {
@@ -105,6 +105,8 @@ export function AppInterface(props: { defaultUrl?: string, root?: (props: Parent
     return window.location.origin
   }
 
+  console.log("interface")
+
   return (
     <ServerProvider defaultUrl={defaultServerUrl()}>
       <ServerKey>
@@ -119,7 +121,7 @@ export function AppInterface(props: { defaultUrl?: string, root?: (props: Parent
                         <ModelsProvider>
                           <CommandProvider>
                             <HighlightsProvider>
-                              <Layout>{props.root?.(rootProps) ?? rootProps.children}</Layout>
+                              <Layout>{rootProps.children}</Layout>
                             </HighlightsProvider>
                           </CommandProvider>
                         </ModelsProvider>
