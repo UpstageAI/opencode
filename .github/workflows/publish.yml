@@ -165,7 +165,6 @@ jobs:
           bun ./scripts/prepare.ts
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
-          GITHUB_TOKEN: ${{ steps.committer.outputs.token }}
           RUST_TARGET: ${{ matrix.settings.target }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -192,7 +191,7 @@ jobs:
           releaseDraft: true
           releaseAssetNamePattern: opencode-desktop-[platform]-[arch][ext]
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: true
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -219,7 +218,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
