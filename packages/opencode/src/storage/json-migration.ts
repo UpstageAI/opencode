@@ -13,6 +13,20 @@ export namespace JsonMigration {
   export async function run(sqlite: Database) {
     const storageDir = path.join(Global.Path.data, "storage")
 
+    if (!(await Bun.file(storageDir).exists())) {
+      log.info("storage directory does not exist, skipping migration")
+      return {
+        projects: 0,
+        sessions: 0,
+        messages: 0,
+        parts: 0,
+        todos: 0,
+        permissions: 0,
+        shares: 0,
+        errors: [] as string[],
+      }
+    }
+
     log.info("starting json to sqlite migration", { storageDir })
     const start = performance.now()
 
