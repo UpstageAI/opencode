@@ -1786,26 +1786,6 @@ export type Config = {
     prune?: boolean
   }
   experimental?: {
-    hook?: {
-      file_edited?: {
-        [key: string]: Array<{
-          command: Array<string>
-          environment?: {
-            [key: string]: string
-          }
-        }>
-      }
-      session_completed?: Array<{
-        command: Array<string>
-        environment?: {
-          [key: string]: string
-        }
-      }>
-    }
-    /**
-     * Number of retries for chat completions on failure
-     */
-    chatMaxRetries?: number
     disable_paste_summary?: boolean
     /**
      * Enable the batch tool
@@ -2143,7 +2123,7 @@ export type Command = {
   description?: string
   agent?: string
   model?: string
-  mcp?: boolean
+  source?: "command" | "mcp" | "skill"
   template: string
   subtask?: boolean
   hints: Array<string>
@@ -4940,6 +4920,7 @@ export type AppSkillsResponses = {
     name: string
     description: string
     location: string
+    content: string
   }>
 }
 
