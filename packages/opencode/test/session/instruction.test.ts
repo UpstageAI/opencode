@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
+import { Global } from "../../src/global"
 import { InstructionPrompt } from "../../src/session/instruction"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
+
+const restore = (key: string, value: string | undefined) => {
+  if (value === undefined) {
+    delete process.env[key]
+    return
+  }
+  process.env[key] = value
+}
 
 describe("InstructionPrompt.resolve", () => {
   test("returns empty when AGENTS.md is at project root (already in systemPaths)", async () => {
@@ -46,5 +56,86 @@ describe("InstructionPrompt.resolve", () => {
         expect(results[0].filepath).toBe(path.join(tmp.path, "subdir", "AGENTS.md"))
       },
     })
+  })
+})
+
+describe("InstructionPrompt.systemPaths", () => {
+  test("includes config and global AGENTS, skips CLAUDE when agents exist", async () => {
+    const homeValue = process.env["OPENCODE_TEST_HOME"]
+    const configValue = process.env["OPENCODE_CONFIG_DIR"]
+    const disableValue = process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+
+    await using config = await tmpdir()
+    await using home = await tmpdir()
+    await using project = await tmpdir()
+
+    try {
+      process.env["OPENCODE_CONFIG_DIR"] = config.path
+      process.env["OPENCODE_TEST_HOME"] = home.path
+      delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+
+      const configAgent = path.join(config.path, "AGENTS.md")
+      const globalAgent = path.join(Global.Path.config, "AGENTS.md")
+      const claudeAgent = path.join(Global.Path.home, ".claude", "CLAUDE.md")
+
+      await fs.mkdir(path.dirname(globalAgent), { recursive: true })
+      await fs.mkdir(path.dirname(claudeAgent), { recursive: true })
+
+      await Bun.write(configAgent, "# Config")
+      await Bun.write(globalAgent, "# Global")
+      await Bun.write(claudeAgent, "# Claude")
+
+      await Instance.provide({
+        directory: project.path,
+        fn: async () => {
+          const system = await InstructionPrompt.systemPaths()
+          expect(system.has(path.resolve(configAgent))).toBe(true)
+          expect(system.has(path.resolve(globalAgent))).toBe(true)
+          expect(system.has(path.resolve(claudeAgent))).toBe(false)
+        },
+      })
+    } finally {
+      await fs.rm(path.join(Global.Path.config, "AGENTS.md"), { force: true })
+      restore("OPENCODE_TEST_HOME", homeValue)
+      restore("OPENCODE_CONFIG_DIR", configValue)
+      restore("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT", disableValue)
+    }
+  })
+
+  test("uses CLAUDE when no agents exist", async () => {
+    const homeValue = process.env["OPENCODE_TEST_HOME"]
+    const configValue = process.env["OPENCODE_CONFIG_DIR"]
+    const disableValue = process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+
+    await using config = await tmpdir()
+    await using home = await tmpdir()
+    await using project = await tmpdir()
+
+    try {
+      process.env["OPENCODE_CONFIG_DIR"] = config.path
+      process.env["OPENCODE_TEST_HOME"] = home.path
+      delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+
+      const globalAgent = path.join(Global.Path.config, "AGENTS.md")
+      const claudeAgent = path.join(Global.Path.home, ".claude", "CLAUDE.md")
+
+      await fs.rm(globalAgent, { force: true })
+      await fs.mkdir(path.dirname(claudeAgent), { recursive: true })
+      await Bun.write(claudeAgent, "# Claude")
+
+      await Instance.provide({
+        directory: project.path,
+        fn: async () => {
+          const system = await InstructionPrompt.systemPaths()
+          expect(system.has(path.resolve(globalAgent))).toBe(false)
+          expect(system.has(path.resolve(claudeAgent))).toBe(true)
+        },
+      })
+    } finally {
+      await fs.rm(path.join(Global.Path.config, "AGENTS.md"), { force: true })
+      restore("OPENCODE_TEST_HOME", homeValue)
+      restore("OPENCODE_CONFIG_DIR", configValue)
+      restore("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT", disableValue)
+    }
   })
 })

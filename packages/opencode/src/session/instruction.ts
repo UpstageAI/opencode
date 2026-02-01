@@ -16,17 +16,6 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
-function globalFiles() {
-  const files = [path.join(Global.Path.config, "AGENTS.md")]
-  if (!Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
-    files.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
-  }
-  if (Flag.OPENCODE_CONFIG_DIR) {
-    files.push(path.join(Flag.OPENCODE_CONFIG_DIR, "AGENTS.md"))
-  }
-  return files
-}
-
 async function resolveRelative(instruction: string): Promise<string[]> {
   if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
     return Filesystem.globUp(instruction, Instance.directory, Instance.worktree).catch(() => [])
@@ -81,18 +70,27 @@ export namespace InstructionPrompt {
       }
     }
 
-    for (const file of globalFiles()) {
-      if (await Bun.file(file).exists()) {
-        paths.add(path.resolve(file))
-        break
-      }
+    const agentsmd: string[] = []
+    if (Flag.OPENCODE_CONFIG_DIR) agentsmd.push(path.join(Flag.OPENCODE_CONFIG_DIR, "AGENTS.md"))
+    agentsmd.push(path.join(Global.Path.config, "AGENTS.md"))
+
+    const found: string[] = []
+    for (const file of agentsmd) {
+      if (await Bun.file(file).exists()) found.push(path.resolve(file))
     }
+
+    if (found.length === 0 && !Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
+      const claude = path.join(Global.Path.home, ".claude", "CLAUDE.md")
+      if (await Bun.file(claude).exists()) found.push(path.resolve(claude))
+    }
+
+    found.forEach((file) => paths.add(file))
 
     if (config.instructions) {
       for (let instruction of config.instructions) {
         if (instruction.startsWith("https://") || instruction.startsWith("http://")) continue
         if (instruction.startsWith("~/")) {
-          instruction = path.join(os.homedir(), instruction.slice(2))
+          instruction = path.join(Global.Path.home, instruction.slice(2))
         }
         const matches = path.isAbsolute(instruction)
           ? await Array.fromAsync(
