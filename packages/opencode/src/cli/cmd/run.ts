@@ -5,7 +5,7 @@ import { cmd } from "./cmd"
 import { Flag } from "../../flag/flag"
 import { bootstrap } from "../bootstrap"
 import { EOL } from "os"
-import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
+import { createOpencodeClient, type Message, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { Server } from "../../server/server"
 import { Provider } from "../../provider/provider"
 import { Agent } from "../../agent/agent"
@@ -54,7 +54,8 @@ function inline(info: Inline) {
 function block(info: Inline, output?: string) {
   UI.empty()
   inline(info)
-  if (output?.trim()) UI.println(output)
+  if (!output?.trim()) return
+  UI.println(output)
   UI.empty()
 }
 
@@ -321,6 +322,16 @@ export const RunCommand = cmd({
         action: "deny",
         pattern: "*",
       },
+      {
+        permission: "plan_enter",
+        action: "deny",
+        pattern: "*",
+      },
+      {
+        permission: "plan_exit",
+        action: "deny",
+        pattern: "*",
+      },
     ]
 
     function title() {
@@ -336,7 +347,7 @@ export const RunCommand = cmd({
       }
       if (args.session) return args.session
       const name = title()
-      const result = await sdk.session.create(name ? { title: name, permission: rules } : { permission: rules })
+      const result = await sdk.session.create({ title: name, permission: rules })
       return result.data?.id
     }
 
@@ -356,6 +367,28 @@ export const RunCommand = cmd({
     }
 
     async function execute(sdk: OpencodeClient) {
+      function show() {
+        if (args.format === "json") return
+        if (!process.stdout.isTTY) return
+        const text = message.trimEnd()
+        if (!text) return
+        UI.empty()
+        text.split("\n").forEach((line) => UI.println(`> ${line}`))
+        UI.empty()
+      }
+      const seen = new Set<string>()
+
+      function head(info: Message) {
+        if (args.format === "json") return
+        if (!process.stdout.isTTY) return
+        if (info.role !== "assistant") return
+        if (seen.has(info.id)) return
+        seen.add(info.id)
+        const model = info.modelID ? ` · ${info.modelID}` : ""
+        UI.empty()
+        UI.println(`$ ${info.agent}${model}`)
+      }
+
       function tool(part: ToolPart) {
         if (part.tool === "bash") return bash(props<typeof BashTool>(part))
         if (part.tool === "glob") return glob(props<typeof GlobTool>(part))
@@ -456,8 +489,8 @@ export const RunCommand = cmd({
             if (permission.sessionID !== sessionID) continue
             UI.println(
               UI.Style.TEXT_WARNING_BOLD + "!",
-              UI.Style.TEXT_NORMAL,
-              `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
+              UI.Style.TEXT_NORMAL +
+                `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
             )
             await sdk.permission.reply({
               requestID: permission.id,
@@ -496,6 +529,8 @@ export const RunCommand = cmd({
         process.exit(1)
       }
       await share(sdk, sessionID)
+
+      if (!args.command) show()
 
       loop().catch((e) => {
         console.error(e)
