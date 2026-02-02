@@ -416,7 +416,7 @@ export const RunCommand = cmd({
 
             if (part.type === "reasoning" && part.time?.end) {
               if (emit("reasoning", { part })) continue
-              const text = part.text.trimEnd()
+              const text = part.text.trim()
               if (!text) continue
               const line = `Thinking: ${text}`
               if (process.stdout.isTTY) {
