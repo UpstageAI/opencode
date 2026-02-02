@@ -6,11 +6,11 @@ import { Flag } from "../../flag/flag"
 import { bootstrap } from "../bootstrap"
 import { Command } from "../../command"
 import { EOL } from "os"
-import { select } from "@clack/prompts"
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2"
 import { Server } from "../../server/server"
 import { Provider } from "../../provider/provider"
 import { Agent } from "../../agent/agent"
+import { PermissionNext } from "../../permission/next"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -209,16 +209,12 @@ export const RunCommand = cmd({
           if (event.type === "permission.asked") {
             const permission = event.properties
             if (permission.sessionID !== sessionID) continue
-            const result = await select({
-              message: `Permission required: ${permission.permission} (${permission.patterns.join(", ")})`,
-              options: [
-                { value: "once", label: "Allow once" },
-                { value: "always", label: "Always allow: " + permission.always.join(", ") },
-                { value: "reject", label: "Reject" },
-              ],
-              initialValue: "once",
-            }).catch(() => "reject")
-            const response = (result.toString().includes("cancel") ? "reject" : result) as "once" | "always" | "reject"
+            UI.println(
+              UI.Style.TEXT_WARNING_BOLD + "!",
+              UI.Style.TEXT_NORMAL,
+              `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
+            )
+            const response = "reject" as const
             await sdk.permission.respond({
               sessionID,
               permissionID: permission.id,
@@ -277,6 +273,13 @@ export const RunCommand = cmd({
 
     if (args.attach) {
       const sdk = createOpencodeClient({ baseUrl: args.attach })
+      const rules: PermissionNext.Ruleset = [
+        {
+          permission: "question",
+          action: "deny",
+          pattern: "*",
+        },
+      ]
 
       const sessionID = await (async () => {
         if (args.continue) {
@@ -292,28 +295,7 @@ export const RunCommand = cmd({
               : args.title
             : undefined
 
-        const result = await sdk.session.create(
-          title
-            ? {
-                title,
-                permission: [
-                  {
-                    permission: "question",
-                    action: "deny",
-                    pattern: "*",
-                  },
-                ],
-              }
-            : {
-                permission: [
-                  {
-                    permission: "question",
-                    action: "deny",
-                    pattern: "*",
-                  },
-                ],
-              },
-        )
+        const result = await sdk.session.create(title ? { title, permission: rules } : { permission: rules })
         return result.data?.id
       })()
 
@@ -344,6 +326,13 @@ export const RunCommand = cmd({
         return Server.App().fetch(request)
       }) as typeof globalThis.fetch
       const sdk = createOpencodeClient({ baseUrl: "http://opencode.internal", fetch: fetchFn })
+      const rules: PermissionNext.Ruleset = [
+        {
+          permission: "question",
+          action: "deny",
+          pattern: "*",
+        },
+      ]
 
       if (args.command) {
         const exists = await Command.get(args.command)
@@ -367,7 +356,7 @@ export const RunCommand = cmd({
               : args.title
             : undefined
 
-        const result = await sdk.session.create(title ? { title } : {})
+        const result = await sdk.session.create(title ? { title, permission: rules } : { permission: rules })
         return result.data?.id
       })()
 
