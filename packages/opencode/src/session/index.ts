@@ -505,17 +505,23 @@ export namespace Session {
 
   export function* list() {
     const project = Instance.project
-    const rows = Database.use((db) =>
-      db.select().from(SessionTable).where(eq(SessionTable.project_id, project.id)).all(),
-    )
-    for (const row of rows) {
-      yield fromRow(row)
+    for (const item of await Storage.list(["session", project.id])) {
+      const session = await Storage.read<Info>(item).catch(() => undefined)
+      if (!session) continue
+      yield session
     }
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const rows = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.parent_id, parentID)).all())
-    return rows.map((row) => fromRow(row))
+    const project = Instance.project
+    const result = [] as Session.Info[]
+    for (const item of await Storage.list(["session", project.id])) {
+      const session = await Storage.read<Info>(item).catch(() => undefined)
+      if (!session) continue
+      if (session.parentID !== parentID) continue
+      result.push(session)
+    }
+    return result
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
