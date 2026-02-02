@@ -10,7 +10,7 @@ import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
-import { Database, NotFoundError, eq } from "../storage/db"
+import { Database, NotFoundError, eq, and } from "../storage/db"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { Storage } from "@/storage/storage"
 import { Log } from "../util/log"
@@ -505,23 +505,24 @@ export namespace Session {
 
   export function* list() {
     const project = Instance.project
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
-      yield session
+    const rows = Database.use((db) =>
+      db.select().from(SessionTable).where(eq(SessionTable.project_id, project.id)).all(),
+    )
+    for (const row of rows) {
+      yield fromRow(row)
     }
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
     const project = Instance.project
-    const result = [] as Session.Info[]
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
-      if (session.parentID !== parentID) continue
-      result.push(session)
-    }
-    return result
+    const rows = Database.use((db) =>
+      db
+        .select()
+        .from(SessionTable)
+        .where(and(eq(SessionTable.project_id, project.id), eq(SessionTable.parent_id, parentID)))
+        .all(),
+    )
+    return rows.map(fromRow)
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
