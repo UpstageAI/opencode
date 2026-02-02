@@ -423,7 +423,7 @@ export const RunCommand = cmd({
               const line = `Thinking: ${text}`
               if (process.stdout.isTTY) {
                 UI.empty()
-                UI.println(`\u001b[3m${line}\u001b[0m`)
+                UI.println(`${UI.Style.TEXT_DIM}\u001b[3m${line}\u001b[0m${UI.Style.TEXT_NORMAL}`)
                 UI.empty()
                 continue
               }
