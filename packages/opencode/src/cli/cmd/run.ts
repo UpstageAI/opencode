@@ -405,12 +405,14 @@ export const RunCommand = cmd({
 
             if (part.type === "text" && part.time?.end) {
               if (emit("text", { part })) continue
+              const text = part.text.trim()
+              if (!text) continue
               if (!process.stdout.isTTY) {
-                process.stdout.write(part.text + EOL)
+                process.stdout.write(text + EOL)
                 continue
               }
               UI.empty()
-              UI.println(part.text.trim())
+              UI.println(text)
               UI.empty()
             }
 
