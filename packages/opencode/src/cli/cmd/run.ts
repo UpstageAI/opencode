@@ -410,7 +410,7 @@ export const RunCommand = cmd({
                 continue
               }
               UI.empty()
-              UI.println(part.text)
+              UI.println(part.text.trim())
               UI.empty()
             }
 
