@@ -417,7 +417,7 @@ export const RunCommand = cmd({
           if (event.type === "message.updated" && event.properties.info.role === "assistant" && !start) {
             start = true
             UI.empty()
-            UI.println(`# ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+            UI.println(`< ${event.properties.info.agent} · ${event.properties.info.modelID}`)
             UI.empty()
           }
 
