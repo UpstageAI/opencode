@@ -24,6 +24,7 @@ import { TaskTool } from "../../tool/task"
 import { SkillTool } from "../../tool/skill"
 import { BashTool } from "../../tool/bash"
 import { TodoWriteTool } from "../../tool/todo"
+import { Locale } from "../../util/locale"
 
 type ToolProps<T extends Tool.Info> = {
   input: Tool.InferParameters<T>
@@ -165,12 +166,14 @@ function websearch(info: ToolProps<typeof WebSearchTool>) {
 }
 
 function task(info: ToolProps<typeof TaskTool>) {
-  const agent = info.input.subagent_type
+  const agent = Locale.titlecase(info.input.subagent_type)
   const desc = info.input.description
+  const started = info.part.state.status === "running"
+  const name = desc ?? `${agent} Task`
   inline({
-    icon: "#",
-    title: `${agent} Task`,
-    ...(desc && { description: desc }),
+    icon: started ? "•" : "✓",
+    title: name,
+    description: desc ? `${agent} Agent` : undefined,
   })
 }
 
@@ -367,19 +370,6 @@ export const RunCommand = cmd({
     }
 
     async function execute(sdk: OpencodeClient) {
-      const seen = new Set<string>()
-
-      function head(info: Message) {
-        if (args.format === "json") return
-        if (!process.stdout.isTTY) return
-        if (info.role !== "assistant") return
-        if (seen.has(info.id)) return
-        seen.add(info.id)
-        const model = info.modelID ? ` · ${info.modelID}` : ""
-        UI.empty()
-        UI.println(`$ ${info.agent}${model}`)
-      }
-
       function tool(part: ToolPart) {
         if (part.tool === "bash") return bash(props<typeof BashTool>(part))
         if (part.tool === "glob") return glob(props<typeof GlobTool>(part))
@@ -409,16 +399,19 @@ export const RunCommand = cmd({
       let error: string | undefined
 
       async function loop() {
-        UI.empty()
-        UI.println(`> ${args.message}`)
-        UI.empty()
-        let start = false
+        const toggles = new Map<string, boolean>()
+
         for await (const event of events.stream) {
-          if (event.type === "message.updated" && event.properties.info.role === "assistant" && !start) {
-            start = true
+          if (
+            event.type === "message.updated" &&
+            event.properties.info.role === "assistant" &&
+            args.format !== "json" &&
+            toggles.get("start") !== true
+          ) {
             UI.empty()
-            UI.println(`< ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+            UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
             UI.empty()
+            toggles.set("start", true)
           }
 
           if (event.type === "message.part.updated") {
@@ -428,6 +421,17 @@ export const RunCommand = cmd({
             if (part.type === "tool" && part.state.status === "completed") {
               if (emit("tool_use", { part })) continue
               tool(part)
+            }
+
+            if (
+              part.type === "tool" &&
+              part.tool === "task" &&
+              part.state.status === "running" &&
+              args.format !== "json"
+            ) {
+              if (toggles.get(part.id) === true) continue
+              task(props<typeof TaskTool>(part))
+              toggles.set(part.id, true)
             }
 
             if (part.type === "step-start") {
