@@ -14,6 +14,27 @@ import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { existsSync } from "fs"
 
+async function runGit(args: string[], cwd: string) {
+  if (Flag.OPENCODE_CLIENT === "acp") {
+    const proc = Bun.spawn({
+      cmd: ["git", ...args],
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
+    if (code !== 0) return undefined
+    return stdout
+  }
+
+  return $`git ${args}`
+    .quiet()
+    .nothrow()
+    .cwd(cwd)
+    .text()
+    .catch(() => undefined)
+}
+
 export namespace Project {
   const log = Log.create({ service: "project" })
   export const Info = z
@@ -79,18 +100,15 @@ export namespace Project {
 
         // generate id from root commit
         if (!id) {
-          const roots = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(sandbox)
-            .text()
-            .then((x) =>
-              x
+          const roots = await runGit(["rev-list", "--max-parents=0", "--all"], sandbox)
+            .then((output) => {
+              if (!output) return undefined
+              return output
                 .split("\n")
-                .filter(Boolean)
-                .map((x) => x.trim())
-                .toSorted(),
-            )
+                .filter((line) => line.length > 0)
+                .map((line) => line.trim())
+                .toSorted()
+            })
             .catch(() => undefined)
 
           if (!roots) {
@@ -119,12 +137,8 @@ export namespace Project {
           }
         }
 
-        const top = await $`git rev-parse --show-toplevel`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
-          .then((x) => path.resolve(sandbox, x.trim()))
+        const top = await runGit(["rev-parse", "--show-toplevel"], sandbox)
+          .then((output) => (output ? path.resolve(sandbox, output.trim()) : undefined))
           .catch(() => undefined)
 
         if (!top) {
@@ -138,13 +152,10 @@ export namespace Project {
 
         sandbox = top
 
-        const worktree = await $`git rev-parse --git-common-dir`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
-          .then((x) => {
-            const dirname = path.dirname(x.trim())
+        const worktree = await runGit(["rev-parse", "--git-common-dir"], sandbox)
+          .then((output) => {
+            if (!output) return undefined
+            const dirname = path.dirname(output.trim())
             if (dirname === ".") return sandbox
             return dirname
           })
