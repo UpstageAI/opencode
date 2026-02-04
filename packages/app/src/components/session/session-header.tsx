@@ -19,6 +19,7 @@ import { Popover } from "@opencode-ai/ui/popover"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { Keybind } from "@opencode-ai/ui/keybind"
 import { StatusPopover } from "../status-popover"
+import { SessionOpenMenu } from "./session-open-menu"
 
 export function SessionHeader() {
   const globalSDK = useGlobalSDK()
@@ -117,7 +118,7 @@ export function SessionHeader() {
   function viewShare() {
     const url = shareUrl()
     if (!url) return
-    platform.openLink(url)
+    void platform.openLink(url).catch(() => undefined)
   }
 
   const centerMount = createMemo(() => document.getElementById("opencode-titlebar-center"))
@@ -150,6 +151,7 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <div class="flex items-center gap-3">
+              <SessionOpenMenu dir={projectDirectory()} />
               <StatusPopover />
               <Show when={showShare()}>
                 <div class="flex items-center">

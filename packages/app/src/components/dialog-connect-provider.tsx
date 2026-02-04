@@ -319,7 +319,7 @@ export function DialogConnectProvider(props: { provider: string }) {
 
                     onMount(() => {
                       if (store.authorization?.method === "code" && store.authorization?.url) {
-                        platform.openLink(store.authorization.url)
+                        void platform.openLink(store.authorization.url).catch(() => undefined)
                       }
                     })
 
@@ -396,7 +396,7 @@ export function DialogConnectProvider(props: { provider: string }) {
                     onMount(() => {
                       void (async () => {
                         if (store.authorization?.url) {
-                          platform.openLink(store.authorization.url)
+                          void platform.openLink(store.authorization.url).catch(() => undefined)
                         }
 
                         const result = await globalSDK.client.provider.oauth

@@ -4,7 +4,7 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface, PlatformProvider, Platform } from "@opencode-ai/app"
 import { open, save } from "@tauri-apps/plugin-dialog"
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link"
-import { open as shellOpen } from "@tauri-apps/plugin-shell"
+import { openPath, openUrl } from "@tauri-apps/plugin-opener"
 import { type as ostype } from "@tauri-apps/plugin-os"
 import { check, Update } from "@tauri-apps/plugin-updater"
 import { getCurrentWindow } from "@tauri-apps/api/window"
@@ -94,8 +94,10 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
     return result
   },
 
-  openLink(url: string) {
-    void shellOpen(url).catch(() => undefined)
+  openLink(url: string, openWith?: string) {
+    const isUrl = /^(https?:|mailto:|tel:|opencode:)/.test(url)
+    if (isUrl) return openUrl(url, openWith)
+    return openPath(url, openWith)
   },
 
   back() {
@@ -359,7 +361,7 @@ render(() => {
     const link = (e.target as HTMLElement).closest("a.external-link") as HTMLAnchorElement | null
     if (link?.href) {
       e.preventDefault()
-      platform.openLink(link.href)
+      void platform.openLink(link.href).catch(() => undefined)
     }
   }
 

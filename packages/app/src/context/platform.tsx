@@ -12,8 +12,8 @@ export type Platform = {
   /** App version */
   version?: string
 
-  /** Open a URL in the default browser */
-  openLink(url: string): void
+  /** Open a URL/path using the OS (optionally with a specific app) */
+  openLink(url: string, openWith?: string): Promise<void>
 
   /** Restart the app  */
   restart(): Promise<void>

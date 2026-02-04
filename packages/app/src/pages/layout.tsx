@@ -2995,7 +2995,7 @@ export default function Layout(props: ParentProps) {
                 icon="help"
                 variant="ghost"
                 size="large"
-                onClick={() => platform.openLink("https://opencode.ai/desktop-feedback")}
+                onClick={() => void platform.openLink("https://opencode.ai/desktop-feedback").catch(() => undefined)}
                 aria-label={language.t("sidebar.help")}
               />
             </Tooltip>

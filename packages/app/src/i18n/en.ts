@@ -469,6 +469,11 @@ export const dict = {
 
   "session.header.search.placeholder": "Search {{project}}",
   "session.header.searchFiles": "Search files",
+  "session.header.open": "Open",
+  "session.header.openIn": "Open in",
+  "session.header.copyPath": "Copy Path",
+  "session.header.copyPath.copied": "Copied path",
+  "session.header.copyPath.copyFailed": "Failed to copy path to clipboard",
 
   "status.popover.trigger": "Status",
   "status.popover.ariaLabel": "Server configurations",

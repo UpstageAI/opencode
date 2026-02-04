@@ -28,7 +28,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 const platform: Platform = {
   platform: "web",
   version: pkg.version,
-  openLink(url: string) {
+  async openLink(url: string, _openWith?: string) {
     window.open(url, "_blank")
   },
   back() {
