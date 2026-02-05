@@ -3,14 +3,7 @@
   "productName": "OpenCode Beta",
   "identifier": "ai.opencode.desktop.beta",
   "bundle": {
-    "createUpdaterArtifacts": true,
-    "linux": {
-      "rpm": {
-        "compression": {
-          "type": "none"
-        }
-      }
-    }
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
