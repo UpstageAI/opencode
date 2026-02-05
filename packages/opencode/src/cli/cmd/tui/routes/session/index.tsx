@@ -78,6 +78,7 @@ import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI } from "@/cli/ui.ts"
+import { Installation } from "@/installation"
 
 addDefaultParsers(parsers.parsers)
 
@@ -226,14 +227,19 @@ export function Session() {
 
   createEffect(() => {
     const title = Locale.truncate(session()?.title ?? "", 50)
-    return exit.message.set(
-      [
-        ``,
-        `  █▀▀█  ${UI.Style.TEXT_DIM}${title}${UI.Style.TEXT_NORMAL}`,
-        `  █  █  ${UI.Style.TEXT_DIM}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
-        `  ▀▀▀▀  `,
-      ].join("\n"),
-    )
+    const lines = [
+      ``,
+      `  █▀▀█  ${UI.Style.TEXT_DIM}${title}${UI.Style.TEXT_NORMAL}`,
+      `  █  █  ${UI.Style.TEXT_DIM}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
+    ]
+    if (Installation.isPreview()) {
+      lines.push(
+        `  ▀▀▀▀  ${UI.Style.TEXT_DIM}found a bug? report it on discord at https://opencode.ai/discord${UI.Style.TEXT_NORMAL}`,
+      )
+    } else {
+      lines.push(`  ▀▀▀▀  `)
+    }
+    return exit.message.set(lines.join("\n"))
   })
 
   useKeyboard((evt) => {
