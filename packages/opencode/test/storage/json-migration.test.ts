@@ -204,6 +204,55 @@ describe("JSON to SQLite migration", () => {
     expect(parts[0].id).toBe("prt_testabc123")
   })
 
+  test("migrates legacy parts without ids in body", async () => {
+    await Bun.write(
+      path.join(storageDir, "project", "proj_test123abc.json"),
+      JSON.stringify({
+        id: "proj_test123abc",
+        worktree: "/",
+        time: { created: Date.now(), updated: Date.now() },
+        sandboxes: [],
+      }),
+    )
+    await Bun.write(
+      path.join(storageDir, "session", "proj_test123abc", "ses_test456def.json"),
+      JSON.stringify({ ...fixtures.session }),
+    )
+    await Bun.write(
+      path.join(storageDir, "message", "ses_test456def", "msg_test789ghi.json"),
+      JSON.stringify({
+        role: "user",
+        agent: "default",
+        model: { providerID: "openai", modelID: "gpt-4" },
+        time: { created: 1700000000000 },
+      }),
+    )
+    await Bun.write(
+      path.join(storageDir, "part", "msg_test789ghi", "prt_testabc123.json"),
+      JSON.stringify({
+        type: "text",
+        text: "Hello, world!",
+      }),
+    )
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.messages).toBe(1)
+    expect(stats?.parts).toBe(1)
+
+    const db = drizzle({ client: sqlite })
+    const messages = db.select().from(MessageTable).all()
+    expect(messages.length).toBe(1)
+    expect(messages[0].id).toBe("msg_test789ghi")
+    expect(messages[0].session_id).toBe("ses_test456def")
+
+    const parts = db.select().from(PartTable).all()
+    expect(parts.length).toBe(1)
+    expect(parts[0].id).toBe("prt_testabc123")
+    expect(parts[0].message_id).toBe("msg_test789ghi")
+    expect(parts[0].session_id).toBe("ses_test456def")
+  })
+
   test("skips orphaned sessions (no parent project)", async () => {
     await Bun.write(
       path.join(storageDir, "session", "proj_test123abc", "ses_orphan.json"),

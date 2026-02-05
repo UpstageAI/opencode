@@ -204,6 +204,7 @@ export namespace JsonMigration {
     // Migrate messages using pre-scanned file map
     const allMessageFiles = [] as string[]
     const allMessageSessions = [] as string[]
+    const messageSessions = new Map<string, string>()
     for (const file of messageFiles) {
       const sessionID = path.basename(path.dirname(file))
       if (!sessionIds.has(sessionID)) continue
@@ -219,12 +220,14 @@ export namespace JsonMigration {
       for (let j = 0; j < batch.length; j++) {
         const data = batch[j]
         if (!data) continue
-        if (!data?.id) {
-          errs.push(`message missing id: ${allMessageFiles[i + j]}`)
+        const file = allMessageFiles[i + j]
+        const id = data.id ?? path.basename(file, ".json")
+        if (!id) {
+          errs.push(`message missing id: ${file}`)
           continue
         }
         const sessionID = allMessageSessions[i + j]
-        const id = data.id
+        messageSessions.set(id, sessionID)
         const rest = data
         delete rest.id
         delete rest.sessionID
@@ -250,14 +253,19 @@ export namespace JsonMigration {
       for (let j = 0; j < batch.length; j++) {
         const data = batch[j]
         if (!data) continue
-        if (!data?.id || !data?.messageID || !data?.sessionID) {
-          errs.push(`part missing id/messageID/sessionID: ${partFiles[i + j]}`)
+        const file = partFiles[i + j]
+        const id = data.id ?? path.basename(file, ".json")
+        const messageID = data.messageID ?? path.basename(path.dirname(file))
+        if (!id || !messageID) {
+          errs.push(`part missing id/messageID/sessionID: ${file}`)
           continue
         }
-        if (!sessionIds.has(data.sessionID)) continue
-        const id = data.id
-        const messageID = data.messageID
-        const sessionID = data.sessionID
+        const sessionID = messageSessions.get(messageID)
+        if (!sessionID) {
+          errs.push(`part missing message session: ${file}`)
+          continue
+        }
+        if (!sessionIds.has(sessionID)) continue
         const rest = data
         delete rest.id
         delete rest.messageID
