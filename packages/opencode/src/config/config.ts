@@ -145,11 +145,20 @@ export namespace Config {
       log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
     }
 
-    const deps = []
+    const deps: Promise<void>[] = []
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-        for (const file of ["opencode.jsonc", "opencode.json"]) {
+      const files = ["opencode.jsonc", "opencode.json"]
+      const isConfigDir = dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR || dir === Global.Path.config
+      const configs = isConfigDir
+        ? await Promise.all(files.map((file) => loadFile(path.join(dir, file), { resolvePlugins: false })))
+        : []
+      const plugins = configs.flatMap((config) => config.plugin ?? [])
+      const shouldInstall = await needsInstall(dir, plugins)
+      if (shouldInstall) await installDependencies(dir, plugins)
+
+      if (isConfigDir) {
+        for (const file of files) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
@@ -158,13 +167,6 @@ export namespace Config {
           result.plugin ??= []
         }
       }
-
-      deps.push(
-        iife(async () => {
-          const shouldInstall = await needsInstall(dir)
-          if (shouldInstall) await installDependencies(dir)
-        }),
-      )
 
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
@@ -247,7 +249,7 @@ export namespace Config {
     await Promise.all(deps)
   }
 
-  export async function installDependencies(dir: string) {
+  export async function installDependencies(dir: string, plugins: string[] = []) {
     const pkg = path.join(dir, "package.json")
     const targetVersion = Installation.isLocal() ? "*" : Installation.VERSION
 
@@ -257,6 +259,10 @@ export namespace Config {
     json.dependencies = {
       ...json.dependencies,
       "@opencode-ai/plugin": targetVersion,
+    }
+    const pluginDeps = deps(plugins)
+    for (const [name, version] of Object.entries(pluginDeps)) {
+      json.dependencies[name] = version
     }
     await Bun.write(pkg, JSON.stringify(json, null, 2))
     await new Promise((resolve) => setTimeout(resolve, 3000))
@@ -286,7 +292,7 @@ export namespace Config {
     }
   }
 
-  async function needsInstall(dir: string) {
+  async function needsInstall(dir: string, plugins: string[] = []) {
     // Some config dirs may be read-only.
     // Installing deps there will fail; skip installation in that case.
     const writable = await isWritable(dir)
@@ -318,8 +324,27 @@ export namespace Config {
       })
       return true
     }
-    if (depVersion === targetVersion) return false
-    return true
+    if (depVersion !== targetVersion) return true
+
+    const pluginDeps = deps(plugins)
+    for (const [name, version] of Object.entries(pluginDeps)) {
+      if (dependencies[name] !== version) return true
+    }
+    return false
+  }
+
+  function deps(items: string[]) {
+    const result: Record<string, string> = {}
+    for (const item of items) {
+      if (!item) continue
+      if (item.startsWith("file://")) continue
+      if (item.startsWith("./") || item.startsWith("../") || item.startsWith("/") || item.startsWith("~")) continue
+      const lastAt = item.lastIndexOf("@")
+      const pkg = lastAt > 0 ? item.substring(0, lastAt) : item
+      const version = lastAt > 0 ? item.substring(lastAt + 1) : "latest"
+      result[pkg] = version
+    }
+    return result
   }
 
   function rel(item: string, patterns: string[]) {
@@ -1216,7 +1241,7 @@ export namespace Config {
     return result
   })
 
-  async function loadFile(filepath: string): Promise<Info> {
+  async function loadFile(filepath: string, options: { resolvePlugins?: boolean } = {}): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
       .text()
@@ -1225,10 +1250,10 @@ export namespace Config {
         throw new JsonError({ path: filepath }, { cause: err })
       })
     if (!text) return {}
-    return load(text, filepath)
+    return load(text, filepath, options)
   }
 
-  async function load(text: string, configFilepath: string) {
+  async function load(text: string, configFilepath: string, options: { resolvePlugins?: boolean } = {}) {
     const original = text
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       return process.env[varName] || ""
@@ -1304,7 +1329,7 @@ export namespace Config {
         await Bun.write(configFilepath, updated).catch(() => {})
       }
       const data = parsed.data
-      if (data.plugin) {
+      if (data.plugin && options.resolvePlugins !== false) {
         for (let i = 0; i < data.plugin.length; i++) {
           const plugin = data.plugin[i]
           try {
