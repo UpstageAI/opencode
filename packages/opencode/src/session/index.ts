@@ -10,7 +10,7 @@ import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
-import { Database, NotFoundError, eq, and } from "../storage/db"
+import { Database, NotFoundError, eq, and, or, like } from "../storage/db"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { Storage } from "@/storage/storage"
 import { Log } from "../util/log"
@@ -505,8 +505,19 @@ export namespace Session {
 
   export function* list() {
     const project = Instance.project
+    const rel = path.relative(Instance.worktree, Instance.directory)
+    const suffix = path.sep + rel
     const rows = Database.use((db) =>
-      db.select().from(SessionTable).where(eq(SessionTable.project_id, project.id)).all(),
+      db
+        .select()
+        .from(SessionTable)
+        .where(
+          and(
+            eq(SessionTable.project_id, project.id),
+            or(eq(SessionTable.directory, Instance.directory), like(SessionTable.directory, `%${suffix}`)),
+          ),
+        )
+        .all(),
     )
     for (const row of rows) {
       yield fromRow(row)
