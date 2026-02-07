@@ -159,10 +159,10 @@ export function Prompt(props: PromptProps) {
   command.register(() => {
     return [
       {
-        title: "Toggle autoaccept permissions",
+        title: "Toggle permissions",
         value: "permission.auto_accept.toggle",
         keybind: "permission_auto_accept_toggle",
-        category: "Permission",
+        category: "Agent",
         onSelect: (dialog) => {
           setAutoaccept(!autoaccept() as any)
           dialog.clear()
