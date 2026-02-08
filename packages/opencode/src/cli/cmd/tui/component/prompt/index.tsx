@@ -1007,7 +1007,7 @@ export function Prompt(props: PromptProps) {
               </box>
               <Show when={autoaccept() === "edit"}>
                 <text>
-                  <span style={{ fg: theme.warning, bold: true }}>auto-edit</span>
+                  <span style={{ fg: theme.warning }}>autoedit</span>
                 </text>
               </Show>
             </box>
