@@ -569,6 +569,27 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
+    } else if (inputText.startsWith("/handoff ")) {
+      // Handle handoff command specially - call endpoint and replace prompt
+      const goal = inputText.slice(9).trim() // Remove "/handoff " prefix
+      if (goal) {
+        const result = await sdk.client.session.handoff({
+          sessionID,
+          goal,
+          model: {
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+          },
+        })
+        if (result.data) {
+          // Replace prompt with the handoff text
+          const handoffText = result.data.text
+          input.setText(handoffText)
+          setStore("prompt", { input: handoffText, parts: [] })
+          // Don't submit yet - let user review and submit manually
+          return
+        }
+      }
     } else if (
       inputText.startsWith("/") &&
       iife(() => {
