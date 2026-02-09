@@ -2,7 +2,7 @@ import { marked } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import katex from "katex"
-import { bundledLanguages, type BundledLanguage, createHighlighter, type HighlighterGeneric } from "shiki"
+import { bundledLanguages, type BundledLanguage, createHighlighter } from "shiki"
 import { createOnigurumaEngine } from "shiki/engine/oniguruma"
 import { createSimpleContext } from "./helper"
 import { getSharedHighlighter, registerCustomTheme, ThemeRegistrationResolved } from "@pierre/diffs"
@@ -377,24 +377,18 @@ registerCustomTheme("OpenCode", () => {
   } as unknown as ThemeRegistrationResolved)
 })
 
-let markdownHighlighter: HighlighterGeneric<any, any> | Promise<HighlighterGeneric<any, any>> | undefined
+let markdownHighlighter: Awaited<ReturnType<typeof createHighlighter>>
 
 export async function getMarkdownHighlighter() {
-  if (markdownHighlighter) {
-    if ("then" in markdownHighlighter) return markdownHighlighter
-    return markdownHighlighter
-  }
+  if (markdownHighlighter) return markdownHighlighter
   const shared = await getSharedHighlighter({ themes: ["OpenCode"], langs: [] })
   const theme = shared.getTheme("OpenCode")
-  const promise = createHighlighter({
+  markdownHighlighter = await createHighlighter({
     themes: [theme],
-    langs: ["text"],
+    langs: shared.getLoadedLanguages(),
     engine: createOnigurumaEngine(import("shiki/wasm")),
   })
-  markdownHighlighter = promise
-  const instance = await promise
-  markdownHighlighter = instance
-  return instance
+  return markdownHighlighter
 }
 
 function renderMathInText(text: string): string {
