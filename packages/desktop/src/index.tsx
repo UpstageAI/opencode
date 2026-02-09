@@ -17,13 +17,19 @@ import { Store } from "@tauri-apps/plugin-store"
 import { Splash } from "@opencode-ai/ui/logo"
 import { createSignal, Show, Accessor, JSX, createResource, onMount, onCleanup } from "solid-js"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
+import { createStore } from "solid-js/store"
+import { listen } from "@tauri-apps/api/event"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Dialog } from "@opencode-ai/ui/dialog"
+import { TextField } from "@opencode-ai/ui/text-field"
+import { Button } from "@opencode-ai/ui/button"
 
 import { UPDATER_ENABLED } from "./updater"
 import { initI18n, t } from "./i18n"
 import pkg from "../package.json"
 import "./styles.css"
 import { commands, InitStep } from "./bindings"
-import { Channel } from "@tauri-apps/api/core"
+import { Channel, invoke } from "@tauri-apps/api/core"
 import { createMenu } from "./menu"
 
 const root = document.getElementById("root")
@@ -32,6 +38,50 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 }
 
 void initI18n()
+
+const ssh = new Map<string, string>()
+const auth = new Map<string, string>()
+
+let base = null as string | null
+
+type SshPrompt = { id: string; prompt: string }
+type SshConnectState = { state: "connecting" | "done" | "error"; error?: string | null }
+
+const sshPromptEvent = "opencode:ssh-prompt"
+const sshPrompts: SshPrompt[] = []
+
+void listen<SshPrompt>("ssh_prompt", (event) => {
+  sshPrompts.push(event.payload)
+  window.dispatchEvent(new CustomEvent(sshPromptEvent))
+}).catch((err) => {
+  console.error("Failed to listen for ssh_prompt", err)
+})
+
+const sshConnectEvent = "opencode:ssh-connect"
+const sshConnectState: SshConnectState[] = []
+
+void listen<SshConnectState>("ssh_connect_state", (event) => {
+  sshConnectState.push(event.payload)
+  window.dispatchEvent(new CustomEvent(sshConnectEvent))
+}).catch((err) => {
+  console.error("Failed to listen for ssh_connect_state", err)
+})
+
+const isConfirmPrompt = (prompt: string) => {
+  const text = prompt.toLowerCase()
+  return text.includes("yes/no") || text.includes("continue connecting")
+}
+
+const isMaskedPrompt = (prompt: string) => {
+  const text = prompt.toLowerCase()
+  return (
+    text.includes("password") ||
+    text.includes("passphrase") ||
+    text.includes("verification code") ||
+    text.includes("one-time") ||
+    text.includes("otp")
+  )
+}
 
 let update: Update | null = null
 
@@ -275,6 +325,8 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
   },
 
   restart: async () => {
+    const keys = Array.from(new Set(ssh.values()))
+    await Promise.all(keys.map((key) => invoke<void>("ssh_disconnect", { key }).catch(() => undefined)))
     await commands.killSidecar().catch(() => undefined)
     await relaunch()
   },
@@ -310,21 +362,51 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
   },
 
   fetch: (input, init) => {
-    const pw = password()
+    if (typeof input === "string" && input.startsWith("/") && base) {
+      input = base + input
+    }
+
+    const origin = (() => {
+      try {
+        const url = input instanceof Request ? input.url : String(input)
+        return new URL(url).origin
+      } catch {
+        return null
+      }
+    })()
+
+    const pw = origin ? (auth.get(origin) ?? null) : password()
 
     const addHeader = (headers: Headers, password: string) => {
       headers.append("Authorization", `Basic ${btoa(`opencode:${password}`)}`)
     }
 
+    const logError = async (url: string, res: Response) => {
+      if (res.ok) return
+      // keep it minimal; enough to debug auth/baseUrl issues
+      const text = await res
+        .clone()
+        .text()
+        .catch(() => "")
+      console.error("fetch failed", { url, status: res.status, statusText: res.statusText, body: text.slice(0, 400) })
+    }
+
     if (input instanceof Request) {
       if (pw) addHeader(input.headers, pw)
-      return tauriFetch(input)
+      return tauriFetch(input).then((res) => {
+        void logError(input.url, res)
+        return res
+      })
     } else {
       const headers = new Headers(init?.headers)
       if (pw) addHeader(headers, pw)
-      return tauriFetch(input, {
+      const url = String(input)
+      return tauriFetch(url, {
         ...(init as any),
         headers: headers,
+      }).then((res) => {
+        void logError(url, res)
+        return res
       })
     }
   },
@@ -336,6 +418,63 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
 
   setDefaultServerUrl: async (url: string | null) => {
     await commands.setDefaultServerUrl(url)
+  },
+
+  serverKey: (url) => {
+    const origin = (() => {
+      try {
+        return new URL(url).origin
+      } catch {
+        return ""
+      }
+    })()
+    const key = origin ? ssh.get(origin) : undefined
+    if (key) return `ssh:${key}`
+    if (origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("[::1]")) return "local"
+    return url
+  },
+
+  isServerLocal: (url) => {
+    const origin = (() => {
+      try {
+        return new URL(url).origin
+      } catch {
+        return null
+      }
+    })()
+    if (origin && ssh.has(origin)) return false
+    if (!origin) return false
+    return origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("[::1]")
+  },
+
+  sshConnect: async (command) => {
+    const result = await invoke<{ key: string; url: string; password: string; destination: string }>("ssh_connect", {
+      command,
+    })
+    const origin = new URL(result.url).origin
+    ssh.set(origin, result.key)
+    auth.set(origin, result.password)
+    return { url: result.url, key: result.key, password: result.password }
+  },
+
+  sshDisconnect: async (key) => {
+    await invoke<void>("ssh_disconnect", { key })
+    for (const [origin, k] of ssh.entries()) {
+      if (k !== key) continue
+      ssh.delete(origin)
+      auth.delete(origin)
+    }
+  },
+
+  wsAuth: (url) => {
+    try {
+      const origin = new URL(url).origin
+      const pw = auth.get(origin) ?? password()
+      if (!pw) return null
+      return { username: "opencode", password: pw }
+    } catch {
+      return null
+    }
   },
 
   parseMarkdown: (markdown: string) => commands.parseMarkdownCommand(markdown),
@@ -380,6 +519,152 @@ render(() => {
   const [serverPassword, setServerPassword] = createSignal<string | null>(null)
   const platform = createPlatform(() => serverPassword())
 
+  function SshPromptDialog(props: {
+    prompt: Accessor<string>
+    pending: Accessor<boolean>
+    onSubmit: (value: string) => void
+    onCancel: () => void
+  }) {
+    const confirm = () => isConfirmPrompt(props.prompt())
+    const masked = () => isMaskedPrompt(props.prompt())
+    const [value, setValue] = createSignal("")
+
+    return (
+      <Dialog title="SSH" fit>
+        <div class="flex flex-col gap-3 px-3 pb-3">
+          <div class="text-14-regular text-text-base whitespace-pre-wrap px-1">{props.prompt()}</div>
+
+          <Show when={!confirm()}>
+            <TextField
+              type={masked() ? "password" : "text"}
+              hideLabel
+              placeholder={masked() ? "Password" : "Response"}
+              value={value()}
+              autofocus
+              disabled={props.pending()}
+              onChange={(v) => setValue(v)}
+              onKeyDown={(event: KeyboardEvent) => {
+                event.stopPropagation()
+                if (event.key === "Escape") {
+                  event.preventDefault()
+                  props.onCancel()
+                  return
+                }
+                if (event.key !== "Enter" || event.isComposing) return
+                event.preventDefault()
+                props.onSubmit(value())
+              }}
+            />
+          </Show>
+
+          <div class="flex items-center justify-end gap-2">
+            <Show
+              when={confirm()}
+              fallback={
+                <>
+                  <Button variant="secondary" onClick={props.onCancel} disabled={props.pending()}>
+                    Cancel
+                  </Button>
+                  <Button variant="primary" onClick={() => props.onSubmit(value())} disabled={props.pending()}>
+                    {props.pending() ? "Connecting..." : "Continue"}
+                  </Button>
+                </>
+              }
+            >
+              <Button variant="secondary" onClick={() => props.onSubmit("no")} disabled={props.pending()}>
+                No
+              </Button>
+              <Button variant="primary" onClick={() => props.onSubmit("yes")} disabled={props.pending()}>
+                {props.pending() ? "Connecting..." : "Yes"}
+              </Button>
+            </Show>
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
+  function SshPromptHandler() {
+    const dialog = useDialog()
+    const [store, setStore] = createStore({
+      prompt: null as SshPrompt | null,
+      pending: false,
+      open: false,
+    })
+
+    const open = () => {
+      if (store.open) return
+      setStore("open", true)
+      dialog.show(
+        () => (
+          <SshPromptDialog
+            prompt={() => store.prompt?.prompt ?? ""}
+            pending={() => store.pending}
+            onSubmit={async (value) => {
+              const current = store.prompt
+              if (!current) return
+              setStore({ pending: true })
+              await invoke<void>("ssh_prompt_reply", { id: current.id, value }).catch((err) => {
+                console.error("Failed to send ssh_prompt_reply", err)
+              })
+            }}
+            onCancel={async () => {
+              const current = store.prompt
+              setStore({ pending: true })
+              if (current) {
+                await invoke<void>("ssh_prompt_reply", { id: current.id, value: "" }).catch((err) => {
+                  console.error("Failed to send ssh_prompt_reply", err)
+                })
+              }
+              close()
+            }}
+          />
+        ),
+        () => close(),
+      )
+    }
+
+    const close = () => {
+      if (!store.open) return
+      dialog.close()
+      setStore({ open: false, pending: false, prompt: null })
+    }
+
+    const showNext = () => {
+      const next = sshPrompts.shift()
+      if (!next) return
+      setStore({ prompt: next, pending: false })
+      open()
+    }
+
+    const onConnectState = (state: SshConnectState) => {
+      if (state.state === "connecting") {
+        if (store.prompt) setStore("pending", true)
+        return
+      }
+      close()
+    }
+
+    onMount(() => {
+      const onPrompt = () => showNext()
+      const onConnect = () => {
+        const next = sshConnectState.shift()
+        if (!next) return
+        onConnectState(next)
+      }
+      window.addEventListener(sshPromptEvent, onPrompt)
+      window.addEventListener(sshConnectEvent, onConnect)
+      showNext()
+      onConnect()
+      onCleanup(() => {
+        window.removeEventListener(sshPromptEvent, onPrompt)
+        window.removeEventListener(sshConnectEvent, onConnect)
+      })
+    })
+
+    return null
+  }
+
   function handleClick(e: MouseEvent) {
     const link = (e.target as HTMLElement).closest("a.external-link") as HTMLAnchorElement | null
     if (link?.href) {
@@ -401,6 +686,15 @@ render(() => {
         <ServerGate>
           {(data) => {
             setServerPassword(data().password)
+            try {
+              const origin = new URL(data().url).origin
+              base = origin
+              const pw = data().password
+              if (pw) auth.set(origin, pw)
+              if (!pw) auth.delete(origin)
+            } catch {
+              // ignore
+            }
             window.__OPENCODE__ ??= {}
             window.__OPENCODE__.serverPassword = data().password ?? undefined
 
@@ -413,9 +707,12 @@ render(() => {
             }
 
             return (
-              <AppInterface defaultUrl={data().url} isSidecar>
-                <Inner />
-              </AppInterface>
+              <>
+                <AppInterface defaultUrl={data().url} isSidecar>
+                  <Inner />
+                  <SshPromptHandler />
+                </AppInterface>
+              </>
             )
           }}
         </ServerGate>

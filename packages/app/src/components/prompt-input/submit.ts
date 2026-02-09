@@ -136,6 +136,15 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     input.resetHistoryNavigation()
 
     const projectDirectory = sdk.directory
+    if (!projectDirectory) {
+      showToast({
+        variant: "error",
+        title: language.t("common.requestFailed"),
+        description: language.t("directory.error.invalidUrl"),
+      })
+      navigate("/")
+      return
+    }
     const isNewSession = !params.id
     const worktreeSelection = input.newSessionWorktree ?? "main"
 
@@ -194,7 +203,9 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             description: errorMessage(err),
           })
           return undefined
-        })
+        });
+
+      console.log({sessionDirectory})
       if (session) {
         layout.handoff.setTabs(base64Encode(sessionDirectory), session.id)
         navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)

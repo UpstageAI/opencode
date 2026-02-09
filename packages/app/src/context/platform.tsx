@@ -57,6 +57,21 @@ export type Platform = {
   /** Set the default server URL to use on app startup (platform-specific) */
   setDefaultServerUrl?(url: string | null): Promise<void> | void
 
+  /** Override how the app groups server state (projects/history) for a URL */
+  serverKey?(url: string): string
+
+  /** Override whether a server URL should be treated as local */
+  isServerLocal?(url: string): boolean
+
+  /** Connect to a remote server over SSH (desktop only) */
+  sshConnect?(command: string): Promise<{ url: string; key: string; password: string | null }>
+
+  /** Disconnect an SSH session (desktop only) */
+  sshDisconnect?(key: string): Promise<void>
+
+  /** Credentials to embed in WebSocket URLs (desktop only) */
+  wsAuth?(url: string): { username: string; password: string } | null
+
   /** Parse markdown to HTML using native parser (desktop only, returns unprocessed code blocks) */
   parseMarkdown?(markdown: string): Promise<string>
 

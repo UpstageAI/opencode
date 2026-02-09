@@ -4,6 +4,7 @@ mod constants;
 mod job_object;
 mod markdown;
 mod server;
+mod ssh;
 mod window_customizer;
 mod windows;
 
@@ -210,7 +211,10 @@ pub fn run() {
             server::get_default_server_url,
             server::set_default_server_url,
             markdown::parse_markdown_command,
-            check_app_exists
+            check_app_exists,
+            ssh::ssh_connect,
+            ssh::ssh_disconnect,
+            ssh::ssh_prompt_reply
         ])
         .events(tauri_specta::collect_events![LoadingWindowComplete])
         .error_handling(tauri_specta::ErrorHandlingMode::Throw);
@@ -276,6 +280,7 @@ pub fn run() {
                 println!("Received Exit");
 
                 kill_sidecar(app.clone());
+                ssh::shutdown(app.clone());
             }
         });
 }
@@ -425,6 +430,8 @@ fn setup_app(app: &tauri::AppHandle, init_rx: watch::Receiver<InitStep>) {
 
     // Initialize log state
     app.manage(LogState(Arc::new(Mutex::new(VecDeque::new()))));
+
+    app.manage(ssh::SshState::default());
 
     #[cfg(windows)]
     app.manage(JobObjectState::new());

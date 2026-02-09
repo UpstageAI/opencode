@@ -12,6 +12,9 @@ export const commands = {
 	setDefaultServerUrl: (url: string | null) => __TAURI_INVOKE<null>("set_default_server_url", { url }),
 	parseMarkdownCommand: (markdown: string) => __TAURI_INVOKE<string>("parse_markdown_command", { markdown }),
 	checkAppExists: (appName: string) => __TAURI_INVOKE<boolean>("check_app_exists", { appName }),
+	sshConnect: (command: string) => __TAURI_INVOKE<SshConnectData>("ssh_connect", { command }),
+	sshDisconnect: (key: string) => __TAURI_INVOKE<null>("ssh_disconnect", { key }),
+	sshPromptReply: (id: string, value: string) => __TAURI_INVOKE<null>("ssh_prompt_reply", { id, value }),
 };
 
 /** Events */
@@ -27,6 +30,13 @@ export type LoadingWindowComplete = null;
 export type ServerReadyData = {
 		url: string,
 		password: string | null,
+	};
+
+export type SshConnectData = {
+		key: string,
+		url: string,
+		password: string,
+		destination: string,
 	};
 
 /* Tauri Specta runtime */

@@ -131,6 +131,13 @@ export function DialogSelectServer() {
       busy: false,
       status: undefined as boolean | undefined,
     },
+
+    ssh: {
+      command: "",
+      connecting: false,
+      error: "",
+      showForm: false,
+    },
   })
   const [defaultUrl, defaultUrlActions] = createResource(
     async () => {
@@ -150,6 +157,7 @@ export function DialogSelectServer() {
     { initialValue: null },
   )
   const canDefault = createMemo(() => !!platform.getDefaultServerUrl && !!platform.setDefaultServerUrl)
+  const canSsh = createMemo(() => !!platform.sshConnect)
   const fetcher = platform.fetch ?? globalThis.fetch
 
   const looksComplete = (value: string) => {
@@ -186,6 +194,15 @@ export function DialogSelectServer() {
       error: "",
       status: undefined,
       busy: false,
+    })
+  }
+
+  const resetSsh = () => {
+    setStore("ssh", {
+      command: "",
+      connecting: false,
+      error: "",
+      showForm: false,
     })
   }
 
@@ -360,6 +377,35 @@ export function DialogSelectServer() {
     }
   }
 
+  async function handleSshConnect() {
+    if (!platform.sshConnect) return
+    if (store.ssh.connecting) return
+
+    const command = store.ssh.command.trim()
+    if (!command) {
+      resetSsh()
+      return
+    }
+
+    setStore("ssh", { connecting: true, error: "" })
+    try {
+      const result = await platform.sshConnect(command)
+      const url = normalizeServerUrl(result.url)
+      if (!url) {
+        setStore("ssh", { error: language.t("dialog.server.add.error") })
+        return
+      }
+      resetSsh()
+      await select(url, true)
+    } catch (err) {
+      setStore("ssh", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setStore("ssh", { connecting: false })
+    }
+  }
+
   return (
     <Dialog title={language.t("dialog.server.title")}>
       <div class="flex flex-col gap-2">
@@ -517,18 +563,80 @@ export function DialogSelectServer() {
         </List>
 
         <div class="px-5 pb-5">
-          <Button
-            variant="secondary"
-            icon="plus-small"
-            size="large"
-            onClick={() => {
-              setStore("addServer", { showForm: true, url: "", error: "" })
-              scrollListToBottom()
-            }}
-            class="py-1.5 pl-1.5 pr-3 flex items-center gap-1.5"
-          >
-            {store.addServer.adding ? language.t("dialog.server.add.checking") : language.t("dialog.server.add.button")}
-          </Button>
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                icon="plus-small"
+                size="large"
+                onClick={() => {
+                  setStore("addServer", { showForm: true, url: "", error: "" })
+                  scrollListToBottom()
+                }}
+                class="py-1.5 pl-1.5 pr-3 flex items-center gap-1.5"
+              >
+                {store.addServer.adding
+                  ? language.t("dialog.server.add.checking")
+                  : language.t("dialog.server.add.button")}
+              </Button>
+
+              <Show when={canSsh()}>
+                <Button
+                  variant="secondary"
+                  icon="server"
+                  size="large"
+                  onClick={() => {
+                    setStore("ssh", { showForm: !store.ssh.showForm, error: "" })
+                  }}
+                  class="py-1.5 pl-1.5 pr-3 flex items-center gap-1.5"
+                >
+                  SSH
+                </Button>
+              </Show>
+            </div>
+
+            <Show when={store.ssh.showForm && canSsh()}>
+              <div class="flex flex-col gap-2">
+                <TextField
+                  type="text"
+                  hideLabel
+                  placeholder={"ssh user@host"}
+                  value={store.ssh.command}
+                  validationState={store.ssh.error ? "invalid" : "valid"}
+                  error={store.ssh.error}
+                  disabled={store.ssh.connecting}
+                  onChange={(value) => {
+                    if (store.ssh.connecting) return
+                    setStore("ssh", { command: value, error: "" })
+                  }}
+                  onKeyDown={(event: KeyboardEvent) => {
+                    event.stopPropagation()
+                    if (event.key === "Escape") {
+                      event.preventDefault()
+                      resetSsh()
+                      return
+                    }
+                    if (event.key !== "Enter" || event.isComposing) return
+                    event.preventDefault()
+                    void handleSshConnect()
+                  }}
+                />
+                <div class="flex items-center gap-2">
+                  <Button
+                    size="normal"
+                    variant="primary"
+                    disabled={store.ssh.connecting}
+                    onClick={() => void handleSshConnect()}
+                  >
+                    {store.ssh.connecting ? "Connecting..." : "Connect"}
+                  </Button>
+                  <Button size="normal" variant="ghost" disabled={store.ssh.connecting} onClick={resetSsh}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </Show>
+          </div>
         </div>
       </div>
     </Dialog>

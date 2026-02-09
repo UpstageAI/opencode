@@ -148,9 +148,17 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       })
     })
 
-    const origin = createMemo(() => projectsKey(state.active))
+    const origin = createMemo(() => {
+      const url = state.active
+      if (!url) return ""
+      return platform.serverKey?.(url) ?? projectsKey(url)
+    })
     const projectsList = createMemo(() => store.projects[origin()] ?? [])
-    const isLocal = createMemo(() => origin() === "local")
+    const isLocal = createMemo(() => {
+      const url = state.active
+      if (!url) return false
+      return platform.isServerLocal?.(url) ?? origin() === "local"
+    })
 
     return {
       ready: isReady,

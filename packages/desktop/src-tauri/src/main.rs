@@ -52,6 +52,52 @@ fn configure_display_backend() -> Option<String> {
 }
 
 fn main() {
+    #[cfg(unix)]
+    {
+        if let Some(socket) = std::env::args().skip_while(|a| a != "--ssh-askpass").nth(1) {
+            use std::io::{Read as _, Write as _};
+            use std::os::unix::net::UnixStream;
+            use std::process::exit;
+
+            let prompt = std::env::args()
+                .skip_while(|a| a != "--ssh-askpass")
+                .skip(2)
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let mut stream = match UnixStream::connect(&socket) {
+                Ok(v) => v,
+                Err(err) => {
+                    eprintln!("askpass connect failed: {err}");
+                    exit(1);
+                }
+            };
+
+            let bytes = prompt.as_bytes();
+            let len = u32::try_from(bytes.len()).unwrap_or(0);
+            if stream.write_all(&len.to_be_bytes()).is_err() || stream.write_all(bytes).is_err() {
+                eprintln!("askpass write failed");
+                exit(1);
+            }
+
+            let mut len_buf = [0u8; 4];
+            if stream.read_exact(&mut len_buf).is_err() {
+                eprintln!("askpass read failed");
+                exit(1);
+            }
+            let reply_len = u32::from_be_bytes(len_buf) as usize;
+            let mut reply = vec![0u8; reply_len];
+            if stream.read_exact(&mut reply).is_err() {
+                eprintln!("askpass read failed");
+                exit(1);
+            }
+
+            let _ = std::io::stdout().write_all(&reply);
+            let _ = std::io::stdout().write_all(b"\n");
+            return;
+        }
+    }
+
     // Ensure loopback connections are never sent through proxy settings.
     // Some VPNs/proxies set HTTP_PROXY/HTTPS_PROXY/ALL_PROXY without excluding localhost.
     const LOOPBACK: [&str; 3] = ["127.0.0.1", "localhost", "::1"];

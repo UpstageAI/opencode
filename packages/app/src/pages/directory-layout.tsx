@@ -21,7 +21,7 @@ export default function Layout(props: ParentProps) {
   })
 
   createEffect(() => {
-    if (!params.dir) return
+    if (params.dir === undefined) return
     if (directory()) return
     if (invalid === params.dir) return
     invalid = params.dir
