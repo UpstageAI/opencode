@@ -1,8 +1,9 @@
 use tauri::{AppHandle, Manager, path::BaseDirectory};
 use tauri_plugin_shell::{
     ShellExt,
-    process::{Command, CommandChild, CommandEvent},
+    process::{Command, CommandChild, CommandEvent, TerminatedPayload},
 };
+use tokio::sync::oneshot;
 
 use crate::{LogState, constants::MAX_LOG_ENTRIES};
 
@@ -188,22 +189,58 @@ pub fn create_command(app: &tauri::AppHandle, args: &str) -> Command {
     };
 }
 
-pub fn serve(app: &AppHandle, hostname: &str, port: u32, password: &str) -> CommandChild {
+pub fn serve(
+    app: &AppHandle,
+    hostname: &str,
+    port: u32,
+    password: &str,
+) -> (CommandChild, oneshot::Receiver<TerminatedPayload>) {
     let log_state = app.state::<LogState>();
     let log_state_clone = log_state.inner().clone();
 
+    let (exit_tx, exit_rx) = oneshot::channel::<TerminatedPayload>();
+
     println!("spawning sidecar on port {port}");
 
-    let (mut rx, child) = create_command(
-        app,
-        format!("serve --hostname {hostname} --port {port}").as_str(),
-    )
+    if let Ok(mut logs) = log_state_clone.0.lock() {
+        let args = format!(
+            "--print-logs --log-level WARN serve --hostname {hostname} --port {port}"
+        );
+
+        #[cfg(target_os = "windows")]
+        {
+            logs.push_back(format!("[SPAWN] sidecar=opencode-cli args=\"{args}\"\n"));
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let sidecar = get_sidecar_path(app);
+            let shell = get_user_shell();
+            let cmd = if shell.ends_with("/nu") {
+                format!("^\"{}\" {}", sidecar.display(), args)
+            } else {
+                format!("\"{}\" {}", sidecar.display(), args)
+            };
+            logs.push_back(format!(
+                "[SPAWN] shell=\"{shell}\" argv=\"-il -c {cmd}\"\n"
+            ));
+        }
+
+        while logs.len() > MAX_LOG_ENTRIES {
+            logs.pop_front();
+        }
+    }
+
+    let args = format!("--print-logs --log-level WARN serve --hostname {hostname} --port {port}");
+
+    let (mut rx, child) = create_command(app, &args)
     .env("OPENCODE_SERVER_USERNAME", "opencode")
     .env("OPENCODE_SERVER_PASSWORD", password)
     .spawn()
     .expect("Failed to spawn opencode");
 
     tokio::spawn(async move {
+        let mut exit_tx = Some(exit_tx);
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line_bytes) => {
@@ -232,10 +269,35 @@ pub fn serve(app: &AppHandle, hostname: &str, port: u32, password: &str) -> Comm
                         }
                     }
                 }
+                CommandEvent::Error(err) => {
+                    eprintln!("{err}");
+
+                    if let Ok(mut logs) = log_state_clone.0.lock() {
+                        logs.push_back(format!("[ERROR] {err}\n"));
+                        while logs.len() > MAX_LOG_ENTRIES {
+                            logs.pop_front();
+                        }
+                    }
+                }
+                CommandEvent::Terminated(payload) => {
+                    if let Ok(mut logs) = log_state_clone.0.lock() {
+                        logs.push_back(format!(
+                            "[EXIT] code={:?} signal={:?}\n",
+                            payload.code, payload.signal
+                        ));
+                        while logs.len() > MAX_LOG_ENTRIES {
+                            logs.pop_front();
+                        }
+                    }
+
+                    if let Some(tx) = exit_tx.take() {
+                        let _ = tx.send(payload);
+                    }
+                }
                 _ => {}
             }
         }
     });
 
-    child
+    (child, exit_rx)
 }
