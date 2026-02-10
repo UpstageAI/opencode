@@ -8,10 +8,15 @@ use std::{
 use tauri::{AppHandle, Emitter as _, Manager};
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
-    net::UnixListener,
     process::{Child, Command},
     sync::{Mutex, oneshot},
 };
+
+#[cfg(unix)]
+use tokio::net::UnixListener;
+
+#[cfg(not(unix))]
+use tokio::net::TcpListener;
 
 use crate::server;
 
@@ -33,12 +38,6 @@ pub struct SshPrompt {
     pub prompt: String,
 }
 
-#[derive(Clone, serde::Serialize, specta::Type, Debug)]
-pub struct SshConnectState {
-    pub state: String,
-    pub error: Option<String>,
-}
-
 #[derive(Default)]
 pub struct SshState {
     session: Mutex<Option<SshSession>>,
@@ -49,9 +48,9 @@ struct SshSession {
     key: String,
     destination: String,
     dir: PathBuf,
-    socket_path: PathBuf,
     askpass_task: tokio::task::JoinHandle<()>,
-    master: Child,
+    socket_path: Option<PathBuf>,
+    master: Option<Child>,
     forward: Child,
     server: Child,
 }
@@ -60,6 +59,18 @@ struct SshSession {
 struct Spec {
     destination: String,
     args: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct Askpass {
+    socket: String,
+    exe: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ControlMode {
+    Master,
+    Client,
 }
 
 fn free_port() -> u16 {
@@ -77,8 +88,8 @@ fn parse_ssh_command(input: &str) -> Result<Spec, String> {
     }
 
     let without_prefix = trimmed.strip_prefix("ssh ").unwrap_or(trimmed);
-    let tokens = shell_words::split(without_prefix)
-        .map_err(|e| format!("Invalid SSH command: {e}"))?;
+    let tokens =
+        shell_words::split(without_prefix).map_err(|e| format!("Invalid SSH command: {e}"))?;
     if tokens.is_empty() {
         return Err("SSH command is empty".to_string());
     }
@@ -87,8 +98,7 @@ fn parse_ssh_command(input: &str) -> Result<Spec, String> {
         "-4", "-6", "-A", "-a", "-C", "-K", "-k", "-X", "-x", "-Y", "-y",
     ];
     const ALLOWED_ARGS: &[&str] = &[
-        "-B", "-b", "-c", "-D", "-F", "-I", "-i", "-J", "-l", "-m", "-o", "-P",
-        "-p", "-w",
+        "-B", "-b", "-c", "-D", "-F", "-I", "-i", "-J", "-l", "-m", "-o", "-P", "-p", "-w",
     ];
 
     // Disallowed: -E, -e, -f, -G, -g, -M, -N, -n, -O, -q, -S, -s, -T, -t, -V, -v, -W, -L, -R
@@ -159,33 +169,32 @@ fn sh_quote(input: &str) -> String {
 }
 
 fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
-    tauri::process::current_binary(&app.env()).map_err(|e| format!("Failed to locate current binary: {e}"))
+    tauri::process::current_binary(&app.env())
+        .map_err(|e| format!("Failed to locate current binary: {e}"))
 }
 
-fn write_executable(path: &Path, content: &str) -> Result<(), String> {
-    std::fs::write(path, content).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+async fn ensure_ssh_available() -> Result<(), String> {
+    let res = Command::new("ssh")
+        .arg("-V")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("Failed to chmod {}: {e}", path.display()))?;
+    if res.is_err() {
+        if cfg!(windows) {
+            return Err(
+                "ssh.exe was not found on PATH. Install Windows OpenSSH or Git for Windows and ensure ssh.exe is on PATH."
+                    .to_string(),
+            );
+        }
+        return Err("ssh was not found on PATH".to_string());
     }
 
     Ok(())
 }
 
-fn askpass_script(app: &AppHandle, socket: &Path, dst: &Path) -> Result<(), String> {
-    let exe = exe_path(app)?;
-    let script = format!(
-        "#!/bin/sh\nexec {} --ssh-askpass {} \"$@\"\n",
-        sh_quote(&exe.to_string_lossy()),
-        sh_quote(&socket.to_string_lossy()),
-    );
-    write_executable(dst, &script)
-}
-
-fn ssh_command(script: &Path, args: Vec<String>) -> Command {
+fn ssh_command(askpass: &Askpass, args: Vec<String>) -> Command {
     let mut cmd = Command::new("ssh");
     cmd.args(args);
     cmd.stdin(std::process::Stdio::null());
@@ -193,7 +202,8 @@ fn ssh_command(script: &Path, args: Vec<String>) -> Command {
     cmd.stderr(std::process::Stdio::piped());
 
     cmd.env("SSH_ASKPASS_REQUIRE", "force");
-    cmd.env("SSH_ASKPASS", script);
+    cmd.env("SSH_ASKPASS", &askpass.exe);
+    cmd.env("OPENCODE_SSH_ASKPASS_SOCKET", &askpass.socket);
 
     if std::env::var_os("DISPLAY").is_none() {
         cmd.env("DISPLAY", "1");
@@ -204,7 +214,7 @@ fn ssh_command(script: &Path, args: Vec<String>) -> Command {
     cmd
 }
 
-fn ssh_spawn_bg(script: &Path, args: Vec<String>) -> Command {
+fn ssh_spawn_bg(askpass: &Askpass, args: Vec<String>) -> Command {
     let mut cmd = Command::new("ssh");
     cmd.args(args);
     cmd.stdin(std::process::Stdio::null());
@@ -212,7 +222,8 @@ fn ssh_spawn_bg(script: &Path, args: Vec<String>) -> Command {
     cmd.stderr(std::process::Stdio::piped());
 
     cmd.env("SSH_ASKPASS_REQUIRE", "force");
-    cmd.env("SSH_ASKPASS", script);
+    cmd.env("SSH_ASKPASS", &askpass.exe);
+    cmd.env("OPENCODE_SSH_ASKPASS_SOCKET", &askpass.socket);
 
     if std::env::var_os("DISPLAY").is_none() {
         cmd.env("DISPLAY", "1");
@@ -222,8 +233,8 @@ fn ssh_spawn_bg(script: &Path, args: Vec<String>) -> Command {
     cmd
 }
 
-async fn ssh_output(_app: &AppHandle, script: &Path, args: Vec<String>) -> Result<String, String> {
-    let out = ssh_command(script, args)
+async fn ssh_output(askpass: &Askpass, args: Vec<String>) -> Result<String, String> {
+    let out = ssh_command(askpass, args)
         .output()
         .await
         .map_err(|e| format!("Failed to run ssh: {e}"))?;
@@ -240,7 +251,39 @@ async fn ssh_output(_app: &AppHandle, script: &Path, args: Vec<String>) -> Resul
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-async fn wait_master_ready(_app: &AppHandle, script: &Path, spec: &Spec, socket_path: &Path) -> Result<(), String> {
+fn control_supported() -> bool {
+    cfg!(unix)
+}
+
+fn control_args(socket_path: Option<&Path>, mode: ControlMode) -> Vec<String> {
+    if !control_supported() {
+        return Vec::new();
+    }
+
+    let Some(socket_path) = socket_path else {
+        return Vec::new();
+    };
+
+    let mut args = Vec::new();
+    match mode {
+        ControlMode::Master => {
+            args.push("-o".into());
+            args.push("ControlMaster=yes".into());
+            args.push("-o".into());
+            args.push("ControlPersist=no".into());
+        }
+        ControlMode::Client => {
+            args.push("-o".into());
+            args.push("ControlMaster=no".into());
+        }
+    }
+
+    args.push("-o".into());
+    args.push(format!("ControlPath={}", socket_path.display()));
+    args
+}
+
+async fn wait_master_ready(askpass: &Askpass, spec: &Spec, socket_path: &Path) -> Result<(), String> {
     let start = Instant::now();
     loop {
         if start.elapsed() > Duration::from_secs(30) {
@@ -248,14 +291,12 @@ async fn wait_master_ready(_app: &AppHandle, script: &Path, spec: &Spec, socket_
         }
 
         let res = ssh_command(
-            script,
-            vec![
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
-                "-O".into(),
-                "check".into(),
-                spec.destination.clone(),
-            ],
+            askpass,
+            [
+                control_args(Some(socket_path), ControlMode::Client),
+                vec!["-O".into(), "check".into(), spec.destination.clone()],
+            ]
+            .concat(),
         )
         .output()
         .await;
@@ -272,22 +313,18 @@ async fn wait_master_ready(_app: &AppHandle, script: &Path, spec: &Spec, socket_
 
 async fn ensure_remote_opencode(
     app: &AppHandle,
-    script: &Path,
+    askpass: &Askpass,
     spec: &Spec,
-    socket_path: &Path,
+    socket_path: Option<&Path>,
 ) -> Result<(), String> {
     let version = app.package_info().version.to_string();
 
     let installed = ssh_output(
-        app,
-        script,
+        askpass,
         [
             spec.args.clone(),
+            control_args(socket_path, ControlMode::Client),
             vec![
-                "-o".into(),
-                "ControlMaster=no".into(),
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
                 spec.destination.clone(),
                 "cd; ~/.opencode/bin/opencode --version".into(),
             ],
@@ -316,18 +353,11 @@ async fn ensure_remote_opencode(
     );
 
     ssh_output(
-        app,
-        script,
+        askpass,
         [
             spec.args.clone(),
-            vec![
-                "-o".into(),
-                "ControlMaster=no".into(),
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
-                spec.destination.clone(),
-                cmd,
-            ],
+            control_args(socket_path, ControlMode::Client),
+            vec![spec.destination.clone(), cmd],
         ]
         .concat(),
     )
@@ -339,21 +369,18 @@ async fn ensure_remote_opencode(
     Ok(())
 }
 
-async fn spawn_master(_app: &AppHandle, script: &Path, spec: &Spec, socket_path: &Path) -> Result<Child, String> {
+async fn spawn_master(
+    askpass: &Askpass,
+    spec: &Spec,
+    socket_path: &Path,
+) -> Result<Child, String> {
     let mut child = ssh_spawn_bg(
-        script,
+        askpass,
         [
             spec.args.clone(),
-            vec![
-                "-N".into(),
-                "-o".into(),
-                "ControlMaster=yes".into(),
-                "-o".into(),
-                "ControlPersist=no".into(),
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
-                spec.destination.clone(),
-            ],
+            vec!["-N".into()],
+            control_args(Some(socket_path), ControlMode::Master),
+            vec![spec.destination.clone()],
         ]
         .concat(),
     )
@@ -384,10 +411,9 @@ fn parse_listening_port(line: &str) -> Option<u16> {
 }
 
 async fn spawn_remote_server(
-    _app: &AppHandle,
-    script: &Path,
+    askpass: &Askpass,
     spec: &Spec,
-    socket_path: &Path,
+    socket_path: Option<&Path>,
     password: &str,
 ) -> Result<(Child, u16), String> {
     let cmd = format!(
@@ -395,17 +421,11 @@ async fn spawn_remote_server(
     );
 
     let mut child = ssh_command(
-        script,
+        askpass,
         [
             spec.args.clone(),
-            vec![
-                "-o".into(),
-                "ControlMaster=no".into(),
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
-                spec.destination.clone(),
-                cmd,
-            ],
+            control_args(socket_path, ControlMode::Client),
+            vec![spec.destination.clone(), cmd],
         ]
         .concat(),
     )
@@ -452,15 +472,15 @@ async fn spawn_remote_server(
 
 async fn spawn_forward(
     _app: &AppHandle,
-    script: &Path,
+    askpass: &Askpass,
     spec: &Spec,
-    socket_path: &Path,
+    socket_path: Option<&Path>,
     local_port: u16,
     remote_port: u16,
 ) -> Result<Child, String> {
     let forward = format!("127.0.0.1:{local_port}:127.0.0.1:{remote_port}");
     let mut child = ssh_spawn_bg(
-        script,
+        askpass,
         [
             spec.args.clone(),
             vec![
@@ -469,12 +489,9 @@ async fn spawn_forward(
                 forward,
                 "-o".into(),
                 "ExitOnForwardFailure=yes".into(),
-                "-o".into(),
-                "ControlMaster=no".into(),
-                "-o".into(),
-                format!("ControlPath={}", socket_path.display()),
-                spec.destination.clone(),
             ],
+            control_args(socket_path, ControlMode::Client),
+            vec![spec.destination.clone()],
         ]
         .concat(),
     )
@@ -498,13 +515,15 @@ async fn spawn_forward(
 async fn disconnect_session(mut session: SshSession) {
     let _ = session.forward.kill().await;
     let _ = session.server.kill().await;
-    let _ = session.master.kill().await;
+    if let Some(mut master) = session.master {
+        let _ = master.kill().await;
+    }
 
     session.askpass_task.abort();
     let _ = std::fs::remove_dir_all(session.dir);
 }
 
-async fn read_prompt(stream: &mut tokio::net::UnixStream) -> Result<String, String> {
+async fn read_prompt<S: AsyncReadExt + Unpin>(stream: &mut S) -> Result<String, String> {
     let mut len_buf = [0u8; 4];
     stream
         .read_exact(&mut len_buf)
@@ -523,7 +542,7 @@ async fn read_prompt(stream: &mut tokio::net::UnixStream) -> Result<String, Stri
     Ok(prompt)
 }
 
-async fn write_reply(stream: &mut tokio::net::UnixStream, value: &str) -> Result<(), String> {
+async fn write_reply<S: AsyncWriteExt + Unpin>(stream: &mut S, value: &str) -> Result<(), String> {
     let bytes = value.as_bytes();
     let len = u32::try_from(bytes.len()).map_err(|_| "Askpass reply too large".to_string())?;
     stream
@@ -537,78 +556,157 @@ async fn write_reply(stream: &mut tokio::net::UnixStream, value: &str) -> Result
     Ok(())
 }
 
-fn spawn_askpass_server(app: AppHandle, socket: PathBuf) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let listener = match UnixListener::bind(&socket) {
-            Ok(v) => v,
-            Err(e) => {
-                log(format!("Failed to bind askpass socket {}: {e}", socket.display()));
-                return;
-            }
-        };
+async fn spawn_askpass_server(
+    app: AppHandle,
+    dir: &Path,
+) -> Result<(tokio::task::JoinHandle<()>, String), String> {
+    #[cfg(unix)]
+    {
+        let socket = dir.join("askpass.sock");
+        let listener = UnixListener::bind(&socket)
+            .map_err(|e| format!("Failed to bind askpass socket {}: {e}", socket.display()))?;
+        let location = socket.to_string_lossy().to_string();
 
         log(format!("Askpass listening on {}", socket.display()));
 
-        loop {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-
-            let app = app.clone();
-            tokio::spawn(async move {
-                let prompt = match read_prompt(&mut stream).await {
-                    Ok(v) => v,
-                    Err(_) => return,
+        let task = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
                 };
 
-                log(format!("Prompt received: {}", prompt.replace('\n', "\\n")));
+                let app = app.clone();
+                tokio::spawn(async move {
+                    let prompt = match read_prompt(&mut stream).await {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
 
-                let id = uuid::Uuid::new_v4().to_string();
-                let (tx, rx) = oneshot::channel::<String>();
+                    log(format!("Prompt received: {}", prompt.replace('\n', "\\n")));
 
-                {
-                    let state = app.state::<SshState>();
-                    state.prompts.lock().await.insert(id.clone(), tx);
-                }
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let (tx, rx) = oneshot::channel::<String>();
 
-                match app.emit(
-                    "ssh_prompt",
-                    SshPrompt {
-                        id: id.clone(),
-                        prompt,
-                    },
-                ) {
-                    Ok(()) => log(format!("Prompt emitted: {id}")),
-                    Err(e) => log(format!("Prompt emit failed: {id}: {e}")),
+                    {
+                        let state = app.state::<SshState>();
+                        state.prompts.lock().await.insert(id.clone(), tx);
+                    }
+
+                    match app.emit(
+                        "ssh_prompt",
+                        SshPrompt {
+                            id: id.clone(),
+                            prompt,
+                        },
+                    ) {
+                        Ok(()) => log(format!("Prompt emitted: {id}")),
+                        Err(e) => log(format!("Prompt emit failed: {id}: {e}")),
+                    };
+
+                    let value = tokio::time::timeout(Duration::from_secs(120), rx)
+                        .await
+                        .ok()
+                        .and_then(|r| r.ok())
+                        .unwrap_or_default();
+
+                    if value.is_empty() {
+                        log(format!("Prompt reply empty/timeout: {id}"));
+                    } else {
+                        log(format!("Prompt reply received: {id}"));
+                    }
+
+                    {
+                        let state = app.state::<SshState>();
+                        state.prompts.lock().await.remove(&id);
+                    }
+
+                    let _ = write_reply(&mut stream, &value).await;
+                });
+            }
+        });
+
+        return Ok((task, location));
+    }
+
+    #[cfg(not(unix))]
+    {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("Failed to bind askpass listener: {e}"))?;
+        let addr = listener
+            .local_addr()
+            .map_err(|e| format!("Failed to read askpass address: {e}"))?;
+        let location = format!("tcp:{addr}");
+
+        log(format!("Askpass listening on {addr}"));
+
+        let task = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
                 };
 
-                let value = tokio::time::timeout(Duration::from_secs(120), rx)
-                    .await
-                    .ok()
-                    .and_then(|r| r.ok())
-                    .unwrap_or_default();
+                let app = app.clone();
+                tokio::spawn(async move {
+                    let prompt = match read_prompt(&mut stream).await {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
 
-                if value.is_empty() {
-                    log(format!("Prompt reply empty/timeout: {id}"));
-                } else {
-                    log(format!("Prompt reply received: {id}"));
-                }
+                    log(format!("Prompt received: {}", prompt.replace('\n', "\\n")));
 
-                {
-                    let state = app.state::<SshState>();
-                    state.prompts.lock().await.remove(&id);
-                }
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let (tx, rx) = oneshot::channel::<String>();
 
-                let _ = write_reply(&mut stream, &value).await;
-            });
-        }
-    })
+                    {
+                        let state = app.state::<SshState>();
+                        state.prompts.lock().await.insert(id.clone(), tx);
+                    }
+
+                    match app.emit(
+                        "ssh_prompt",
+                        SshPrompt {
+                            id: id.clone(),
+                            prompt,
+                        },
+                    ) {
+                        Ok(()) => log(format!("Prompt emitted: {id}")),
+                        Err(e) => log(format!("Prompt emit failed: {id}: {e}")),
+                    };
+
+                    let value = tokio::time::timeout(Duration::from_secs(120), rx)
+                        .await
+                        .ok()
+                        .and_then(|r| r.ok())
+                        .unwrap_or_default();
+
+                    if value.is_empty() {
+                        log(format!("Prompt reply empty/timeout: {id}"));
+                    } else {
+                        log(format!("Prompt reply received: {id}"));
+                    }
+
+                    {
+                        let state = app.state::<SshState>();
+                        state.prompts.lock().await.remove(&id);
+                    }
+
+                    let _ = write_reply(&mut stream, &value).await;
+                });
+            }
+        });
+
+        return Ok((task, location));
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn ssh_prompt_reply(app: AppHandle, id: String, value: String) -> Result<(), String> {
-    log(format!("Prompt reply from UI: {id} ({} chars)", value.len()));
+    log(format!(
+        "Prompt reply from UI: {id} ({} chars)",
+        value.len()
+    ));
     let state = app.state::<SshState>();
     let tx = state.prompts.lock().await.remove(&id);
     let Some(tx) = tx else {
@@ -643,19 +741,8 @@ pub async fn ssh_disconnect(app: AppHandle, key: String) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub async fn ssh_connect(app: AppHandle, command: String) -> Result<SshConnectData, String> {
-    if cfg!(not(unix)) {
-        return Err("SSH connect is only supported on macOS & Linux".to_string());
-    }
-
-    let _ = app.emit(
-        "ssh_connect_state",
-        SshConnectState {
-            state: "connecting".to_string(),
-            error: None,
-        },
-    );
-
-    let result = async {
+    async {
+        ensure_ssh_available().await?;
         let spec = parse_ssh_command(&command)?;
 
         log(format!("Connect requested: {}", spec.destination));
@@ -675,38 +762,56 @@ pub async fn ssh_connect(app: AppHandle, command: String) -> Result<SshConnectDa
 
         // Unix domain sockets (and OpenSSH ControlPath) have strict length limits on macOS.
         // Avoid long per-user temp dirs like /var/folders/... by using /tmp.
-        let dir = PathBuf::from("/tmp").join(format!("opencode-ssh-{key}"));
+        let dir = if control_supported() {
+            PathBuf::from("/tmp").join(format!("opencode-ssh-{key}"))
+        } else {
+            std::env::temp_dir().join(format!("opencode-ssh-{key}"))
+        };
         std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
 
-        let socket_path = dir.join("ssh.sock");
-        let askpass_socket = dir.join("askpass.sock");
-        let askpass_path = dir.join("askpass.sh");
-        askpass_script(&app, &askpass_socket, &askpass_path)?;
+        let socket_path = control_supported().then(|| dir.join("ssh.sock"));
+        let (askpass_task, askpass_socket) = spawn_askpass_server(app.clone(), &dir).await?;
+        let askpass = Askpass {
+            socket: askpass_socket,
+            exe: exe_path(&app)?,
+        };
 
         log(format!("Session dir: {}", dir.display()));
-        log(format!("ControlPath: {}", socket_path.display()));
-        log(format!("Askpass socket: {}", askpass_socket.display()));
+        if let Some(path) = socket_path.as_ref() {
+            log(format!("ControlPath: {}", path.display()));
+        }
+        log(format!("Askpass socket: {}", askpass.socket));
 
-        let askpass_task = spawn_askpass_server(app.clone(), askpass_socket);
-
-        log("Starting SSH master");
-        let master = spawn_master(&app, &askpass_path, &spec, &socket_path).await?;
-        log("Waiting for master ready");
-        wait_master_ready(&app, &askpass_path, &spec, &socket_path).await?;
-        log("Master ready");
+        let master = if let Some(path) = socket_path.as_ref() {
+            log("Starting SSH master");
+            let master = spawn_master(&askpass, &spec, path).await?;
+            log("Waiting for master ready");
+            wait_master_ready(&askpass, &spec, path).await?;
+            log("Master ready");
+            Some(master)
+        } else {
+            None
+        };
 
         log("Ensuring remote opencode");
-        ensure_remote_opencode(&app, &askpass_path, &spec, &socket_path).await?;
+        ensure_remote_opencode(&app, &askpass, &spec, socket_path.as_deref()).await?;
         log("Remote opencode ready");
 
         log("Starting remote opencode server");
         let (server_child, remote_port) =
-            spawn_remote_server(&app, &askpass_path, &spec, &socket_path, &password).await?;
+            spawn_remote_server(&askpass, &spec, socket_path.as_deref(), &password).await?;
 
         log(format!("Remote server port: {remote_port}"));
         log(format!("Starting port forward to {url}"));
-        let forward_child =
-            spawn_forward(&app, &askpass_path, &spec, &socket_path, local_port, remote_port).await?;
+        let forward_child = spawn_forward(
+            &app,
+            &askpass,
+            &spec,
+            socket_path.as_deref(),
+            local_port,
+            remote_port,
+        )
+        .await?;
 
         log("Waiting for forwarded health");
         let start = Instant::now();
@@ -745,26 +850,7 @@ pub async fn ssh_connect(app: AppHandle, command: String) -> Result<SshConnectDa
             destination: spec.destination,
         })
     }
-    .await;
-
-    let _ = match &result {
-        Ok(_) => app.emit(
-            "ssh_connect_state",
-            SshConnectState {
-                state: "done".to_string(),
-                error: None,
-            },
-        ),
-        Err(err) => app.emit(
-            "ssh_connect_state",
-            SshConnectState {
-                state: "error".to_string(),
-                error: Some(err.clone()),
-            },
-        ),
-    };
-
-    result
+    .await
 }
 
 pub fn shutdown(app: AppHandle) {

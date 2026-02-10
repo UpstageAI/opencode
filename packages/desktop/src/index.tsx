@@ -15,7 +15,7 @@ import { AsyncStorage } from "@solid-primitives/storage"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { Store } from "@tauri-apps/plugin-store"
 import { Splash } from "@opencode-ai/ui/logo"
-import { createSignal, Show, Accessor, JSX, createResource, onMount, onCleanup } from "solid-js"
+import { createSignal, Show, Accessor, JSX, createResource, onMount, onCleanup, createEffect } from "solid-js"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
 import { createStore } from "solid-js/store"
 import { listen } from "@tauri-apps/api/event"
@@ -45,8 +45,6 @@ const auth = new Map<string, string>()
 let base = null as string | null
 
 type SshPrompt = { id: string; prompt: string }
-type SshConnectState = { state: "connecting" | "done" | "error"; error?: string | null }
-
 const sshPromptEvent = "opencode:ssh-prompt"
 const sshPrompts: SshPrompt[] = []
 
@@ -55,16 +53,6 @@ void listen<SshPrompt>("ssh_prompt", (event) => {
   window.dispatchEvent(new CustomEvent(sshPromptEvent))
 }).catch((err) => {
   console.error("Failed to listen for ssh_prompt", err)
-})
-
-const sshConnectEvent = "opencode:ssh-connect"
-const sshConnectState: SshConnectState[] = []
-
-void listen<SshConnectState>("ssh_connect_state", (event) => {
-  sshConnectState.push(event.payload)
-  window.dispatchEvent(new CustomEvent(sshConnectEvent))
-}).catch((err) => {
-  console.error("Failed to listen for ssh_connect_state", err)
 })
 
 const isConfirmPrompt = (prompt: string) => {
@@ -101,7 +89,10 @@ const listenForDeepLinks = async () => {
   await onOpenUrl((urls) => emitDeepLinks(urls)).catch(() => undefined)
 }
 
-const createPlatform = (password: Accessor<string | null>): Platform => ({
+const createPlatform = (
+  password: Accessor<string | null>,
+  sshState: { get: Accessor<boolean>; set: (value: boolean) => void },
+): Platform => ({
   platform: "desktop",
   os: (() => {
     const type = ostype()
@@ -448,13 +439,18 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
   },
 
   sshConnect: async (command) => {
-    const result = await invoke<{ key: string; url: string; password: string; destination: string }>("ssh_connect", {
-      command,
-    })
-    const origin = new URL(result.url).origin
-    ssh.set(origin, result.key)
-    auth.set(origin, result.password)
-    return { url: result.url, key: result.key, password: result.password }
+    sshState.set(true)
+    try {
+      const result = await invoke<{ key: string; url: string; password: string; destination: string }>("ssh_connect", {
+        command,
+      })
+      const origin = new URL(result.url).origin
+      ssh.set(origin, result.key)
+      auth.set(origin, result.password)
+      return { url: result.url, key: result.key, password: result.password }
+    } finally {
+      sshState.set(false)
+    }
   },
 
   sshDisconnect: async (key) => {
@@ -517,7 +513,8 @@ void listenForDeepLinks()
 
 render(() => {
   const [serverPassword, setServerPassword] = createSignal<string | null>(null)
-  const platform = createPlatform(() => serverPassword())
+  const [sshConnecting, setSshConnecting] = createSignal(false)
+  const platform = createPlatform(() => serverPassword(), { get: sshConnecting, set: setSshConnecting })
 
   function SshPromptDialog(props: {
     prompt: Accessor<string>
@@ -584,7 +581,7 @@ render(() => {
     )
   }
 
-  function SshPromptHandler() {
+  function SshPromptHandler(props: { connecting: Accessor<boolean> }) {
     const dialog = useDialog()
     const [store, setStore] = createStore({
       prompt: null as SshPrompt | null,
@@ -637,29 +634,18 @@ render(() => {
       open()
     }
 
-    const onConnectState = (state: SshConnectState) => {
-      if (state.state === "connecting") {
-        if (store.prompt) setStore("pending", true)
-        return
-      }
-      close()
-    }
-
     onMount(() => {
       const onPrompt = () => showNext()
-      const onConnect = () => {
-        const next = sshConnectState.shift()
-        if (!next) return
-        onConnectState(next)
-      }
       window.addEventListener(sshPromptEvent, onPrompt)
-      window.addEventListener(sshConnectEvent, onConnect)
       showNext()
-      onConnect()
       onCleanup(() => {
         window.removeEventListener(sshPromptEvent, onPrompt)
-        window.removeEventListener(sshConnectEvent, onConnect)
       })
+    })
+
+    createEffect(() => {
+      if (props.connecting()) return
+      close()
     })
 
     return null
@@ -710,7 +696,7 @@ render(() => {
               <>
                 <AppInterface defaultUrl={data().url} isSidecar>
                   <Inner />
-                  <SshPromptHandler />
+                  <SshPromptHandler connecting={() => sshConnecting()} />
                 </AppInterface>
               </>
             )

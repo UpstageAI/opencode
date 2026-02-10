@@ -51,51 +51,78 @@ fn configure_display_backend() -> Option<String> {
     )
 }
 
+#[cfg(unix)]
+fn askpass_stream(socket: &str) -> Result<Box<dyn std::io::Read + std::io::Write>, String> {
+    if let Some(addr) = socket.strip_prefix("tcp:") {
+        let stream = std::net::TcpStream::connect(addr)
+            .map_err(|e| format!("askpass connect failed: {e}"))?;
+        let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+        return Ok(boxed);
+    }
+
+    use std::os::unix::net::UnixStream;
+    let stream = UnixStream::connect(socket).map_err(|e| format!("askpass connect failed: {e}"))?;
+    let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+    Ok(boxed)
+}
+
+#[cfg(not(unix))]
+fn askpass_stream(socket: &str) -> Result<Box<dyn std::io::Read + std::io::Write>, String> {
+    let addr = socket
+        .strip_prefix("tcp:")
+        .ok_or_else(|| "askpass socket is not tcp on this platform".to_string())?;
+    let stream =
+        std::net::TcpStream::connect(addr).map_err(|e| format!("askpass connect failed: {e}"))?;
+    let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+    Ok(boxed)
+}
+
 fn main() {
-    #[cfg(unix)]
-    {
-        if let Some(socket) = std::env::args().skip_while(|a| a != "--ssh-askpass").nth(1) {
-            use std::io::{Read as _, Write as _};
-            use std::os::unix::net::UnixStream;
-            use std::process::exit;
+    if let Ok(socket) = std::env::var("OPENCODE_SSH_ASKPASS_SOCKET") {
+        use std::io::{Read as _, Write as _};
+        use std::process::exit;
 
-            let prompt = std::env::args()
-                .skip_while(|a| a != "--ssh-askpass")
-                .skip(2)
+        let args = std::env::args().collect::<Vec<_>>();
+        let prompt = if let Some(pos) = args.iter().position(|a| a == "--ssh-askpass") {
+            args.iter()
+                .skip(pos + 2)
+                .cloned()
                 .collect::<Vec<_>>()
-                .join(" ");
+                .join(" ")
+        } else {
+            args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ")
+        };
 
-            let mut stream = match UnixStream::connect(&socket) {
-                Ok(v) => v,
-                Err(err) => {
-                    eprintln!("askpass connect failed: {err}");
-                    exit(1);
-                }
-            };
-
-            let bytes = prompt.as_bytes();
-            let len = u32::try_from(bytes.len()).unwrap_or(0);
-            if stream.write_all(&len.to_be_bytes()).is_err() || stream.write_all(bytes).is_err() {
-                eprintln!("askpass write failed");
+        let mut stream = match askpass_stream(&socket) {
+            Ok(v) => v,
+            Err(err) => {
+                eprintln!("{err}");
                 exit(1);
             }
+        };
 
-            let mut len_buf = [0u8; 4];
-            if stream.read_exact(&mut len_buf).is_err() {
-                eprintln!("askpass read failed");
-                exit(1);
-            }
-            let reply_len = u32::from_be_bytes(len_buf) as usize;
-            let mut reply = vec![0u8; reply_len];
-            if stream.read_exact(&mut reply).is_err() {
-                eprintln!("askpass read failed");
-                exit(1);
-            }
-
-            let _ = std::io::stdout().write_all(&reply);
-            let _ = std::io::stdout().write_all(b"\n");
-            return;
+        let bytes = prompt.as_bytes();
+        let len = u32::try_from(bytes.len()).unwrap_or(0);
+        if stream.write_all(&len.to_be_bytes()).is_err() || stream.write_all(bytes).is_err() {
+            eprintln!("askpass write failed");
+            exit(1);
         }
+
+        let mut len_buf = [0u8; 4];
+        if stream.read_exact(&mut len_buf).is_err() {
+            eprintln!("askpass read failed");
+            exit(1);
+        }
+        let reply_len = u32::from_be_bytes(len_buf) as usize;
+        let mut reply = vec![0u8; reply_len];
+        if stream.read_exact(&mut reply).is_err() {
+            eprintln!("askpass read failed");
+            exit(1);
+        }
+
+        let _ = std::io::stdout().write_all(&reply);
+        let _ = std::io::stdout().write_all(b"\n");
+        return;
     }
 
     // Ensure loopback connections are never sent through proxy settings.
