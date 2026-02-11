@@ -538,7 +538,7 @@ const createPlatform = (
           if (!blob) return resolve(null)
           resolve(new File([blob], `pasted-image-${Date.now()}.png`, { type: "image/png" }))
         }, "image/png")
-      }).catch(() => undefined)
+      })
     },
   }
 }
