@@ -7,7 +7,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter as _, Manager};
 use tokio::{
-    io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
     sync::{Mutex, oneshot},
 };
@@ -283,7 +283,11 @@ fn control_args(socket_path: Option<&Path>, mode: ControlMode) -> Vec<String> {
     args
 }
 
-async fn wait_master_ready(askpass: &Askpass, spec: &Spec, socket_path: &Path) -> Result<(), String> {
+async fn wait_master_ready(
+    askpass: &Askpass,
+    spec: &Spec,
+    socket_path: &Path,
+) -> Result<(), String> {
     let start = Instant::now();
     loop {
         if start.elapsed() > Duration::from_secs(30) {
@@ -369,11 +373,7 @@ async fn ensure_remote_opencode(
     Ok(())
 }
 
-async fn spawn_master(
-    askpass: &Askpass,
-    spec: &Spec,
-    socket_path: &Path,
-) -> Result<Child, String> {
+async fn spawn_master(askpass: &Askpass, spec: &Spec, socket_path: &Path) -> Result<Child, String> {
     let mut child = ssh_spawn_bg(
         askpass,
         [

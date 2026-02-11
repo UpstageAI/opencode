@@ -61,7 +61,7 @@ export type Platform = {
   serverKey?(url: string): string
 
   /** Override whether a server URL should be treated as local */
-  isServerLocal?(url: string): boolean
+  isServerLocal?(url: string): boolean | undefined
 
   /** Connect to a remote server over SSH (desktop only) */
   sshConnect?(command: string): Promise<{ url: string; key: string; password: string | null }>
@@ -71,6 +71,18 @@ export type Platform = {
 
   /** Credentials to embed in WebSocket URLs (desktop only) */
   wsAuth?(url: string): { username: string; password: string } | null
+
+  /** Get the configured WSL integration (desktop only) */
+  getWslEnabled?(): Promise<boolean>
+
+  /** Set the configured WSL integration (desktop only) */
+  setWslEnabled?(config: boolean): Promise<void> | void
+
+  /** Get the preferred display backend (desktop only) */
+  getDisplayBackend?(): Promise<DisplayBackend | null> | DisplayBackend | null
+
+  /** Set the preferred display backend (desktop only) */
+  setDisplayBackend?(backend: DisplayBackend): Promise<void>
 
   /** Parse markdown to HTML using native parser (desktop only, returns unprocessed code blocks) */
   parseMarkdown?(markdown: string): Promise<string>
@@ -84,6 +96,8 @@ export type Platform = {
   /** Read image from clipboard (desktop only) */
   readClipboardImage?(): Promise<File | null>
 }
+
+export type DisplayBackend = "auto" | "wayland"
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({
   name: "Platform",

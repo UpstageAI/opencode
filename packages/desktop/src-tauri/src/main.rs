@@ -23,12 +23,16 @@ fn configure_display_backend() -> Option<String> {
         return None;
     }
 
-    // Allow users to explicitly keep Wayland if they know their setup is stable.
-    let allow_wayland = matches!(
-        env::var("OC_ALLOW_WAYLAND"),
-        Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes")
-    );
+    let prefer_wayland = opencode_lib::linux_display::read_wayland().unwrap_or(false);
+    let allow_wayland = prefer_wayland
+        || matches!(
+            env::var("OC_ALLOW_WAYLAND"),
+            Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes")
+        );
     if allow_wayland {
+        if prefer_wayland {
+            return Some("Wayland session detected; using native Wayland from settings".into());
+        }
         return Some("Wayland session detected; respecting OC_ALLOW_WAYLAND=1".into());
     }
 
@@ -51,29 +55,33 @@ fn configure_display_backend() -> Option<String> {
     )
 }
 
+trait AskpassStream: std::io::Read + std::io::Write {}
+
+impl<T> AskpassStream for T where T: std::io::Read + std::io::Write {}
+
 #[cfg(unix)]
-fn askpass_stream(socket: &str) -> Result<Box<dyn std::io::Read + std::io::Write>, String> {
+fn askpass_stream(socket: &str) -> Result<Box<dyn AskpassStream>, String> {
     if let Some(addr) = socket.strip_prefix("tcp:") {
         let stream = std::net::TcpStream::connect(addr)
             .map_err(|e| format!("askpass connect failed: {e}"))?;
-        let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+        let boxed: Box<dyn AskpassStream> = Box::new(stream);
         return Ok(boxed);
     }
 
     use std::os::unix::net::UnixStream;
     let stream = UnixStream::connect(socket).map_err(|e| format!("askpass connect failed: {e}"))?;
-    let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+    let boxed: Box<dyn AskpassStream> = Box::new(stream);
     Ok(boxed)
 }
 
 #[cfg(not(unix))]
-fn askpass_stream(socket: &str) -> Result<Box<dyn std::io::Read + std::io::Write>, String> {
+fn askpass_stream(socket: &str) -> Result<Box<dyn AskpassStream>, String> {
     let addr = socket
         .strip_prefix("tcp:")
         .ok_or_else(|| "askpass socket is not tcp on this platform".to_string())?;
     let stream =
         std::net::TcpStream::connect(addr).map_err(|e| format!("askpass connect failed: {e}"))?;
-    let boxed: Box<dyn std::io::Read + std::io::Write> = Box::new(stream);
+    let boxed: Box<dyn AskpassStream> = Box::new(stream);
     Ok(boxed)
 }
 
