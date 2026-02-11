@@ -42,10 +42,8 @@ export type SessionCommandContext = {
   status: () => { type: string }
   userMessages: () => UserMessage[]
   visibleUserMessages: () => UserMessage[]
-  activeMessage: () => UserMessage | undefined
   showAllFiles: () => void
   navigateMessageByOffset: (offset: number) => void
-  setExpanded: (id: string, fn: (open: boolean | undefined) => boolean) => void
   setActiveMessage: (message: UserMessage | undefined) => void
   addSelectionToContext: (path: string, selection: FileSelection) => void
   focusInput: () => void
@@ -166,19 +164,6 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       onSelect: () => {
         if (input.terminal.all().length > 0) input.terminal.new()
         input.view().terminal.open()
-      },
-    }),
-    viewCommand({
-      id: "steps.toggle",
-      title: input.language.t("command.steps.toggle"),
-      description: input.language.t("command.steps.toggle.description"),
-      keybind: "mod+e",
-      slash: "steps",
-      disabled: !input.params.id,
-      onSelect: () => {
-        const msg = input.activeMessage()
-        if (!msg) return
-        input.setExpanded(msg.id, (open: boolean | undefined) => !open)
       },
     }),
   ])
