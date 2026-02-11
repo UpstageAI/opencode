@@ -77,11 +77,11 @@ export function Home() {
   let prompt: PromptRef
   const args = useArgs()
   onMount(() => {
+    if (once) return
     if (route.initialPrompt) {
       prompt.set(route.initialPrompt)
-      return
-    }
-    if (!once && args.prompt) {
+      once = true
+    } else if (args.prompt) {
       prompt.set({ input: args.prompt, parts: [] })
       once = true
       prompt.submit()
@@ -93,29 +93,14 @@ export function Home() {
 
   return (
     <>
-      <box flexGrow={1} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} gap={1}>
-        <box height={3} />
-        <Logo />
-        <Show when={!route.initialPrompt}>
-          <box width="100%" maxWidth={75} zIndex={1000} paddingTop={1}>
-            <Prompt
-              ref={(r) => {
-                prompt = r
-                promptRef.set(r)
-              }}
-              hint={Hint}
-            />
-          </box>
-        </Show>
-        <box height={3} width="100%" maxWidth={75} alignItems="center" paddingTop={2}>
-          <Show when={showTips()}>
-            <Tips />
-          </Show>
+      <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
+        <box flexGrow={1} minHeight={0} />
+        <box height={4} minHeight={0} flexShrink={1} />
+        <box flexShrink={0}>
+          <Logo />
         </box>
-        <Toast />
-      </box>
-      <Show when={route.initialPrompt}>
-        <box paddingLeft={2} paddingRight={2}>
+        <box height={1} minHeight={0} flexShrink={1} />
+        <box width="100%" maxWidth={75} zIndex={1000} paddingTop={1} flexShrink={0}>
           <Prompt
             ref={(r) => {
               prompt = r
@@ -124,7 +109,14 @@ export function Home() {
             hint={Hint}
           />
         </box>
-      </Show>
+        <box height={4} minHeight={0} width="100%" maxWidth={75} alignItems="center" paddingTop={3} flexShrink={1}>
+          <Show when={showTips()}>
+            <Tips />
+          </Show>
+        </box>
+        <box flexGrow={1} minHeight={0} />
+        <Toast />
+      </box>
       <box paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2} flexDirection="row" flexShrink={0} gap={2}>
         <text fg={theme.textMuted}>{directory()}</text>
         <box gap={1} flexDirection="row" flexShrink={0}>
