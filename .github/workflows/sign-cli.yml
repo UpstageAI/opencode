@@ -1,6 +1,9 @@
 name: sign-cli
 
 on:
+  push:
+    branches:
+      - brendan/desktop-signpath
   workflow_dispatch:
 
 permissions:
