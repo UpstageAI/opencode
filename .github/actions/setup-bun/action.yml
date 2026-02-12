@@ -5,6 +5,7 @@ runs:
   steps:
     - name: Mount Bun Cache
       uses: useblacksmith/stickydisk@v1
+      if: ${{ contains(runner.labels, 'blacksmith') }}
       with:
         key: ${{ github.repository }}-bun-cache-${{ runner.os }}
         path: ~/.bun
