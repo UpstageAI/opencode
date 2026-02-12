@@ -89,7 +89,7 @@ export const dict = {
   "ui.message.expand": "Expand message",
   "ui.message.collapse": "Collapse message",
   "ui.message.copy": "Copy",
-  "ui.message.copied": "Copied!",
+  "ui.message.copied": "Copied",
   "ui.message.attachment.alt": "attachment",
 
   "ui.patch.action.deleted": "Deleted",
