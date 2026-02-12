@@ -126,10 +126,18 @@ pub fn spawn_local_server(
 
         let terminated = async {
             match exit.await {
-                Ok(payload) => Err(format!(
-                    "Sidecar terminated before becoming healthy (code={:?} signal={:?})",
-                    payload.code, payload.signal
-                )),
+                Ok(payload) => {
+                    let hint = if payload.code == Some(-1073741795) {
+                        " (illegal instruction; binary may require unsupported CPU features)"
+                    } else {
+                        ""
+                    };
+
+                    Err(format!(
+                        "Sidecar terminated before becoming healthy (code={:?} signal={:?}){}",
+                        payload.code, payload.signal, hint
+                    ))
+                }
                 Err(_) => Err("Sidecar terminated before becoming healthy".to_string()),
             }
         };
