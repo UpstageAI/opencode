@@ -318,8 +318,8 @@ fn handle_sqlite_migration_logs(
                     return future::ready(None);
                 };
 
-                if let Some(s) = s.strip_prefix("sqlite-migration:") {
-                    if let Ok(progress) = s.trim().parse::<u8>() {
+                if let Some(s) = s.strip_prefix("sqlite-migration:").map(|s| s.trim()) {
+                    if let Ok(progress) = s.parse::<u8>() {
                         let _ = SqliteMigrationProgress::InProgress(progress).emit(&app);
                     } else if s == "done" {
                         done = true;
