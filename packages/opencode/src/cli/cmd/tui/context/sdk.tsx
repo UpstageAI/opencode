@@ -3,6 +3,7 @@ import { createSimpleContext } from "./helper"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, onCleanup, onMount } from "solid-js"
 import { TuiPlugin } from "../plugin"
+import type { CliRenderer } from "@opentui/core"
 
 export type EventSource = {
   on: (handler: (event: Event) => void) => () => void
@@ -12,6 +13,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
   init: (props: {
     url: string
+    renderer: CliRenderer
     directory?: string
     fetch?: typeof fetch
     headers?: RequestInit["headers"]
@@ -35,6 +37,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       event: emitter,
       url: props.url,
       directory: props.directory,
+      renderer: props.renderer,
     }).catch((error) => {
       console.error("Failed to load TUI plugins", error)
     })

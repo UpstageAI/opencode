@@ -66,16 +66,19 @@ export type TuiEventBus = {
   ) => () => void
 }
 
-export type TuiPluginInput = {
+export type TuiPluginInput<Renderer = unknown> = {
   client: ReturnType<typeof createOpencodeClientV2>
   event: TuiEventBus
   url: string
   directory?: string
+  renderer: Renderer
 }
 
-export type TuiPlugin = (input: TuiPluginInput, options?: PluginOptions) => Promise<void>
+export type TuiPlugin<Renderer = unknown> = (input: TuiPluginInput<Renderer>, options?: PluginOptions) => Promise<void>
 
-export type PluginModule = Plugin | { server?: Plugin; tui?: TuiPlugin; themes?: Record<string, ThemeJson> }
+export type PluginModule<Renderer = unknown> =
+  | Plugin
+  | { server?: Plugin; tui?: TuiPlugin<Renderer>; themes?: Record<string, ThemeJson> }
 
 export type AuthHook = {
   provider: string

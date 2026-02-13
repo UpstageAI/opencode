@@ -81,3 +81,42 @@ test("only reads plugin list from tui.json", async () => {
     },
   })
 })
+
+test("parses renderer options from tui config", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "tui.json"),
+        JSON.stringify(
+          {
+            tui: {
+              renderer: {
+                target_fps: 75,
+                auto_focus: true,
+                use_kitty_keyboard: {
+                  events: true,
+                  report_text: true,
+                },
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await TuiConfig.get()
+      expect(config.tui?.renderer?.target_fps).toBe(75)
+      expect(config.tui?.renderer?.auto_focus).toBe(true)
+      expect(config.tui?.renderer?.use_kitty_keyboard).toEqual({
+        events: true,
+        report_text: true,
+      })
+    },
+  })
+})

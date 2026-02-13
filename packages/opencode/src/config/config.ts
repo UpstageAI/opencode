@@ -920,6 +920,34 @@ export namespace Config {
       ref: "KeybindsConfig",
     })
 
+  const TUIRenderer = z
+    .object({
+      target_fps: z.number().int().positive().optional().describe("Target FPS for the renderer"),
+      max_fps: z.number().int().positive().optional().describe("Maximum FPS for immediate rerenders"),
+      gather_stats: z.boolean().optional().describe("Enable renderer frame statistics collection"),
+      use_mouse: z.boolean().optional().describe("Enable mouse tracking"),
+      enable_mouse_movement: z.boolean().optional().describe("Track mouse movement events"),
+      auto_focus: z.boolean().optional().describe("Auto focus nearest focusable item on click"),
+      use_alternate_screen: z.boolean().optional().describe("Use alternate screen buffer"),
+      open_console_on_error: z.boolean().optional().describe("Open renderer console on uncaught errors"),
+      use_kitty_keyboard: z
+        .union([
+          z.boolean(),
+          z
+            .object({
+              disambiguate: z.boolean().optional(),
+              alternate_keys: z.boolean().optional(),
+              events: z.boolean().optional(),
+              all_keys_as_escapes: z.boolean().optional(),
+              report_text: z.boolean().optional(),
+            })
+            .strict(),
+        ])
+        .optional()
+        .describe("Kitty keyboard protocol settings. true enables defaults, false disables it."),
+    })
+    .strict()
+
   export const TUI = z.object({
     scroll_speed: z.number().min(0.001).optional().describe("TUI scroll speed"),
     scroll_acceleration: z
@@ -932,6 +960,7 @@ export namespace Config {
       .enum(["auto", "stacked"])
       .optional()
       .describe("Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column"),
+    renderer: TUIRenderer.optional().describe("Renderer options for the terminal UI"),
   })
 
   export const Server = z
