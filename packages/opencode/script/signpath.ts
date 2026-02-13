@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 // import { sign } from "../../../script/signpath.ts"
 
 console.log(process.env.INPUT_ARTIFACTS)
