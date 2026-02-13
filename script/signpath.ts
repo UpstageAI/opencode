@@ -142,6 +142,8 @@ async function fetchWithRetry(url: string, options: RequestInit, timeoutMs: numb
   let attempt = 0
   const maxRetries = 12 // Covers ~13 mins
 
+  log("info", "Fetching '{url}'")
+
   while (true) {
     attempt++
     try {
