@@ -1,14 +1,33 @@
-import { Client, GatewayIntentBits, Partials } from "discord.js";
+import { Client, GatewayIntentBits, Partials } from "discord.js"
+import { Context, Effect, Layer, Redacted } from "effect"
+import { AppConfig } from "../config"
 
-export function createDiscordClient(): Client {
-  const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
-    ],
-    partials: [Partials.Channel],
-  });
+export class DiscordClient extends Context.Tag("@discord/DiscordClient")<DiscordClient, Client>() {
+  static readonly layer = Layer.scoped(
+    DiscordClient,
+    Effect.gen(function* () {
+      const config = yield* AppConfig
+      const client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+        ],
+        partials: [Partials.Channel],
+      })
 
-  return client;
+      yield* Effect.tryPromise(() => client.login(Redacted.value(config.discordToken)))
+      yield* Effect.logInfo("Discord client logged in").pipe(
+        Effect.annotateLogs({ event: "discord.login", tag: client.user?.tag ?? "unknown" }),
+      )
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          client.destroy()
+        }),
+      )
+
+      return client
+    }),
+  )
 }

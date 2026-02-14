@@ -1,198 +1,242 @@
-import { Effect, Schedule } from "effect";
-import { logger } from "../observability/logger";
+import { Context, Effect, Layer, ParseResult, Schema, Schedule } from "effect"
+import { HttpBody, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "@effect/platform"
+import { HealthCheckError, OpenCodeClientError } from "../errors"
+import { PreviewAccess, SessionId } from "../types"
 
-type PreviewAccess = {
-  previewUrl: string;
-  previewToken?: string | null;
-};
+const HealthResponse = Schema.Struct({
+  healthy: Schema.Boolean,
+})
 
-export type OpenCodeSessionSummary = {
-  id: string;
-  title: string;
-  updatedAt?: number;
-};
+const CreateSessionResponse = Schema.Struct({
+  id: SessionId,
+})
 
-/**
- * Parse a Daytona preview URL into base URL and token.
- * Preview URLs look like: https://4096-xxx.proxy.daytona.works?tkn=abc123
- */
-function parsePreview(input: string | PreviewAccess): { base: string; token: string | null } {
-  const previewUrl = typeof input === "string" ? input : input.previewUrl;
-  const url = new URL(previewUrl);
-  const token = typeof input === "string"
-    ? url.searchParams.get("tkn")
-    : (input.previewToken ?? url.searchParams.get("tkn"));
-  url.searchParams.delete("tkn");
-  return { base: url.toString().replace(/\/$/, ""), token };
+const ListSessionsResponse = Schema.Array(
+  Schema.Struct({
+    id: SessionId,
+    title: Schema.optional(Schema.String),
+    time: Schema.optional(Schema.Struct({ updated: Schema.optional(Schema.Number) })),
+  }),
+)
+
+const SendPromptResponse = Schema.Struct({
+  parts: Schema.optional(
+    Schema.Array(Schema.Struct({
+      type: Schema.String,
+      text: Schema.optional(Schema.String),
+      content: Schema.optional(Schema.String),
+    })),
+  ),
+})
+
+export class OpenCodeSessionSummary extends Schema.Class<OpenCodeSessionSummary>("OpenCodeSessionSummary")({
+  id: SessionId,
+  title: Schema.String,
+  updatedAt: Schema.optional(Schema.Number),
+}) {}
+
+const parsePreview = (input: PreviewAccess): { base: string; token: string | null } => {
+  const url = new URL(input.previewUrl)
+  const token = input.previewToken ?? url.searchParams.get("tkn")
+  url.searchParams.delete("tkn")
+  return { base: url.toString().replace(/\/$/, ""), token }
 }
 
 /**
- * Fetch wrapper that properly handles Daytona preview URL token auth.
- * Sends token as x-daytona-preview-token header.
+ * HTTP client for an OpenCode server running inside a Daytona sandbox.
+ *
+ * Each method takes a {@link PreviewAccess} to locate the sandbox's preview
+ * tunnel. Typical lifecycle:
+ *
+ * 1. `waitForHealthy` — poll until the server is ready after creation/resume
+ * 2. `createSession` — start a new chat session
+ * 3. `sendPrompt` — send user messages, returns the agent's text response
+ * 4. `abortSession` — cancel an in-flight generation
  */
-async function previewFetch(preview: string | PreviewAccess, path: string, init?: RequestInit): Promise<Response> {
-  const { base, token } = parsePreview(preview);
-  const url = `${base}${path}`;
-  const headers = new Headers(init?.headers);
-  if (token) {
-    headers.set("x-daytona-preview-token", token);
+export declare namespace OpenCodeClient {
+  export interface Service {
+    /** Poll the health endpoint until the server responds healthy, or timeout. */
+    readonly waitForHealthy: (
+      preview: PreviewAccess,
+      maxWaitMs?: number,
+    ) => Effect.Effect<boolean, HealthCheckError>
+    /** Create a new chat session with the given title. Returns the session ID. */
+    readonly createSession: (
+      preview: PreviewAccess,
+      title: string,
+    ) => Effect.Effect<SessionId, OpenCodeClientError>
+    /** Check whether a session still exists on the server. */
+    readonly sessionExists: (
+      preview: PreviewAccess,
+      sessionId: SessionId,
+    ) => Effect.Effect<boolean, OpenCodeClientError>
+    /** List recent sessions, ordered by update time. */
+    readonly listSessions: (
+      preview: PreviewAccess,
+      limit?: number,
+    ) => Effect.Effect<ReadonlyArray<OpenCodeSessionSummary>, OpenCodeClientError>
+    /** Send a user prompt and return the agent's text response. */
+    readonly sendPrompt: (
+      preview: PreviewAccess,
+      sessionId: SessionId,
+      text: string,
+    ) => Effect.Effect<string, OpenCodeClientError>
+    /** Cancel an in-flight generation. Best-effort, errors are swallowed. */
+    readonly abortSession: (
+      preview: PreviewAccess,
+      sessionId: SessionId,
+    ) => Effect.Effect<void>
   }
-  return fetch(url, { ...init, headers });
 }
 
-/**
- * Waits for the OpenCode server inside a sandbox to become healthy.
- * Polls GET /global/health every 2s up to maxWaitMs.
- */
-export async function waitForHealthy(preview: string | PreviewAccess, maxWaitMs = 120_000): Promise<boolean> {
-  const start = Date.now();
-  let lastStatus = "";
+export class OpenCodeClient extends Context.Tag("@discord/OpenCodeClient")<OpenCodeClient, OpenCodeClient.Service>() {
+  static readonly layer = Layer.effect(
+    OpenCodeClient,
+    Effect.gen(function* () {
+      const baseClient = yield* HttpClient.HttpClient
 
-  const poll = Effect.tryPromise(async () => {
-    const res = await previewFetch(preview, "/global/health");
-    lastStatus = `${res.status}`;
+      /** Build a scoped client for a specific preview, with auth header and 2xx filtering. */
+      const scopedClient = (preview: PreviewAccess) => {
+        const { base, token } = parsePreview(preview)
+        return baseClient.pipe(
+          HttpClient.mapRequest((req) =>
+            token ? HttpClientRequest.setHeader(req, "x-daytona-preview-token", token) : req
+          ),
+          HttpClient.mapRequest(HttpClientRequest.prependUrl(base)),
+          HttpClient.filterStatusOk,
+        )
+      }
 
-    if (res.ok) {
-      const body = await res.json() as { healthy?: boolean };
-      if (body.healthy) return true;
-      lastStatus = `200 but healthy=${body.healthy}`;
-      throw new Error(lastStatus);
-    }
+      /** Map HttpClientError + ParseError to OpenCodeClientError for a given operation. */
+      const mapErrors = <A, R>(
+        operation: string,
+        effect: Effect.Effect<A, HttpClientError.HttpClientError | ParseResult.ParseError, R>,
+      ) =>
+        effect.pipe(
+          Effect.catchTags({
+            ResponseError: (err) =>
+              new OpenCodeClientError({ operation, statusCode: err.response.status, body: err.message }),
+            RequestError: (err) =>
+              new OpenCodeClientError({ operation, statusCode: 0, body: err.message }),
+            ParseError: (err) =>
+              new OpenCodeClientError({ operation, statusCode: 0, body: `Decode: ${err.message}` }),
+          }),
+        )
 
-    const body = await res.text().catch(() => "");
-    lastStatus = `${res.status}: ${body.slice(0, 150)}`;
-    throw new Error(lastStatus);
-  }).pipe(
-    Effect.tapError(() =>
-      Effect.sync(() => {
-        const elapsed = ((Date.now() - start) / 1000).toFixed(0);
-        logger.warn({
-          event: "opencode.health.poll",
-          component: "opencode-client",
-          message: "Health check poll failed",
-          elapsedSec: Number(elapsed),
-          lastStatus,
-        });
-      }),
-    ),
-  );
+      const waitForHealthy = Effect.fn("OpenCodeClient.waitForHealthy")(
+        function* (preview: PreviewAccess, maxWaitMs = 120_000) {
+          const maxAttempts = Math.max(1, Math.ceil(maxWaitMs / 2000))
+          const api = scopedClient(preview)
 
-  const maxAttempts = Math.max(1, Math.ceil(maxWaitMs / 2000));
+          const poll = api.get("/global/health").pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(HealthResponse)),
+            Effect.scoped,
+            Effect.flatMap((body) =>
+              body.healthy
+                ? Effect.succeed(true)
+                : new HealthCheckError({ lastStatus: `200 but healthy=${body.healthy}` }),
+            ),
+            Effect.catchAll((cause) => new HealthCheckError({ lastStatus: String(cause) })),
+          )
 
-  return Effect.runPromise(
-    poll.pipe(
-      Effect.retry(
-        Schedule.intersect(
-          Schedule.spaced("2 seconds"),
-          Schedule.recurs(maxAttempts - 1),
-        ),
-      ),
-      Effect.as(true),
-      Effect.catchAll(() =>
-        Effect.sync(() => {
-          logger.error({
-            event: "opencode.health.failed",
-            component: "opencode-client",
-            message: "Health check failed",
-            maxWaitMs,
-            lastStatus,
-          });
-          return false;
-        }),
-      ),
-    ),
-  );
-}
+          return yield* poll.pipe(
+            Effect.retry(
+              Schedule.intersect(
+                Schedule.spaced("2 seconds"),
+                Schedule.recurs(maxAttempts - 1),
+              ),
+            ),
+            Effect.catchAll(() => Effect.succeed(false)),
+          )
+        },
+      )
 
-/**
- * Creates a new OpenCode session and returns the session ID.
- */
-export async function createSession(preview: string | PreviewAccess, title: string): Promise<string> {
-  const res = await previewFetch(preview, "/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
+      const createSession = (preview: PreviewAccess, title: string) =>
+        mapErrors(
+          "createSession",
+          scopedClient(preview)
+            .post("/session", { body: HttpBody.unsafeJson({ title }) })
+            .pipe(
+              Effect.flatMap(HttpClientResponse.schemaBodyJson(CreateSessionResponse)),
+              Effect.scoped,
+              Effect.map((body) => body.id),
+            ),
+        )
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Failed to create session (${res.status}): ${body}`);
-  }
+      const sessionExists = (preview: PreviewAccess, sessionId: SessionId) =>
+        scopedClient(preview)
+          .get(`/session/${sessionId}`)
+          .pipe(
+            Effect.scoped,
+            Effect.as(true),
+            Effect.catchTag("ResponseError", (err) =>
+              err.response.status === 404
+                ? Effect.succeed(false)
+                : new OpenCodeClientError({ operation: "sessionExists", statusCode: err.response.status, body: err.message }),
+            ),
+            Effect.catchTag("RequestError", (err) =>
+              new OpenCodeClientError({ operation: "sessionExists", statusCode: 0, body: err.message }),
+            ),
+          )
 
-  const session = await res.json() as { id: string };
-  return session.id;
-}
+      const listSessions = (preview: PreviewAccess, limit = 50) =>
+        mapErrors(
+          "listSessions",
+          scopedClient(preview)
+            .get(`/session${limit > 0 ? `?limit=${limit}` : ""}`)
+            .pipe(
+              Effect.flatMap(HttpClientResponse.schemaBodyJson(ListSessionsResponse)),
+              Effect.scoped,
+              Effect.map((sessions) =>
+                sessions.map((s) =>
+                  OpenCodeSessionSummary.make({
+                    id: s.id,
+                    title: s.title ?? "",
+                    ...(s.time?.updated != null ? { updatedAt: s.time.updated } : {}),
+                  }),
+                ),
+              ),
+            ),
+        )
 
-export async function sessionExists(preview: string | PreviewAccess, sessionId: string): Promise<boolean> {
-  const res = await previewFetch(preview, `/session/${sessionId}`, {
-    method: "GET",
-  });
+      const sendPrompt = (preview: PreviewAccess, sessionId: SessionId, text: string) =>
+        mapErrors(
+          "sendPrompt",
+          scopedClient(preview)
+            .post(`/session/${sessionId}/message`, {
+              body: HttpBody.unsafeJson({ parts: [{ type: "text", text }] }),
+            })
+            .pipe(
+              Effect.flatMap(HttpClientResponse.schemaBodyJson(SendPromptResponse)),
+              Effect.scoped,
+              Effect.map((result) => {
+                const parts = result.parts ?? []
+                const textContent = parts
+                  .filter((p) => p.type === "text")
+                  .map((p) => p.text || p.content || "")
+                  .filter(Boolean)
+                return textContent.join("\n\n") || "(No response from agent)"
+              }),
+            ),
+        )
 
-  if (res.ok) return true;
-  if (res.status === 404) return false;
+      const abortSession = (preview: PreviewAccess, sessionId: SessionId) =>
+        scopedClient(preview)
+          .post(`/session/${sessionId}/abort`)
+          .pipe(
+            Effect.scoped,
+            Effect.asVoid,
+            Effect.catchAll(() => Effect.void),
+          )
 
-  const body = await res.text().catch(() => "");
-  throw new Error(`Failed to check session (${res.status}): ${body}`);
-}
-
-export async function listSessions(preview: string | PreviewAccess, limit = 50): Promise<OpenCodeSessionSummary[]> {
-  const query = limit > 0 ? `?limit=${limit}` : "";
-  const res = await previewFetch(preview, `/session${query}`, {
-    method: "GET",
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Failed to list sessions (${res.status}): ${body}`);
-  }
-
-  const sessions = await res.json() as Array<{
-    id?: string;
-    title?: string;
-    time?: { updated?: number };
-  }>;
-
-  return sessions
-    .filter((session) => typeof session.id === "string")
-    .map((session) => ({
-      id: session.id as string,
-      title: session.title ?? "",
-      updatedAt: session.time?.updated,
-    }));
-}
-
-/**
- * Sends a prompt to an existing session and returns the text response.
- * This call blocks until the agent finishes processing.
- */
-export async function sendPrompt(preview: string | PreviewAccess, sessionId: string, text: string): Promise<string> {
-  const res = await previewFetch(preview, `/session/${sessionId}/message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      parts: [{ type: "text", text }],
+      return OpenCodeClient.of({
+        waitForHealthy,
+        createSession,
+        sessionExists,
+        listSessions,
+        sendPrompt,
+        abortSession,
+      })
     }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Failed to send prompt (${res.status}): ${body}`);
-  }
-
-  const result = await res.json() as { parts?: Array<{ type: string; text?: string; content?: string }> };
-  const parts = result.parts ?? [];
-
-  const textContent = parts
-    .filter((p) => p.type === "text")
-    .map((p) => p.text || p.content || "")
-    .filter(Boolean);
-
-  return textContent.join("\n\n") || "(No response from agent)";
-}
-
-/**
- * Aborts a running session.
- */
-export async function abortSession(preview: string | PreviewAccess, sessionId: string): Promise<void> {
-  await previewFetch(preview, `/session/${sessionId}/abort`, { method: "POST" }).catch(() => {});
+  )
 }

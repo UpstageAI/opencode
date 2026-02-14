@@ -25,7 +25,7 @@ Discord bot that provisions [Daytona](https://daytona.io) sandboxes running [Ope
 2. Create a new application
 3. Go to **Bot** and click **Reset Token** — save this as `DISCORD_TOKEN`
 4. Enable **Message Content Intent** under **Privileged Gateway Intents**
-5. Go to **OAuth2 > URL Generator**, select the `bot` scope with permissions: **Send Messages**, **Create Public Threads**, **Send Messages in Threads**, **Read Message History**
+5. Go to **OAuth2 > URL Generator**, select scopes `bot` and `applications.commands` with permissions: **Send Messages**, **Create Public Threads**, **Send Messages in Threads**, **Read Message History**
 6. Use the generated URL to invite the bot to your server
 
 ### 2. Get Your API Keys
@@ -89,6 +89,7 @@ This image does not require Docker Compose or special network wiring; only outbo
 | `DISCORD_CATEGORY_ID`      | _(empty)_ | Restrict the bot to a specific channel category                         |
 | `DISCORD_ROLE_ID`          | _(empty)_ | Role ID that triggers the bot via @role mentions                        |
 | `DISCORD_REQUIRED_ROLE_ID` | _(empty)_ | Role users must have to interact with the bot                           |
+| `DISCORD_COMMAND_GUILD_ID` | _(empty)_ | Register slash commands in one guild for instant updates (dev-friendly) |
 
 #### Optional — Storage & Runtime
 
@@ -130,6 +131,13 @@ This image does not require Docker Compose or special network wiring; only outbo
 | `bun run build`     | Bundle for deployment       |
 | `bun run check`     | Typecheck + build           |
 
+### Discord Slash Commands
+
+- `/status` — show current sandbox session for the thread
+- `/reset` — destroy session so next message provisions a fresh sandbox
+
+These map to the existing `!status` / `!reset` behavior.
+
 ## Health Endpoints
 
 - `GET /healthz` — Liveness check (uptime, Discord status, active sessions)
@@ -138,12 +146,13 @@ This image does not require Docker Compose or special network wiring; only outbo
 ## Architecture
 
 ```
-Discord thread
-  └─ message-create handler
-       └─ SandboxManager.resolveSessionForMessage()
+Discord / CLI
+  └─ Conversation service (Inbox → turn logic → Outbox)
+       ├─ ConversationLedger (dedup, at-least-once delivery, replay on restart)
+       └─ ThreadAgentPool.getOrCreate(threadId)
             ├─ active? → health check → reuse
-            ├─ paused? → daytona.start() → restart opencode → reattach session
-            └─ missing? → create sandbox → clone repo → start opencode → new session
+            ├─ paused? → SandboxProvisioner.resume() → reattach session
+            └─ missing? → SandboxProvisioner.provision() → new sandbox + session
 ```
 
 Sessions are persisted in a local SQLite file. Sandbox filesystem (including OpenCode session state) survives pause/resume cycles via Daytona stop/start.

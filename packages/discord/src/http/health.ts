@@ -1,43 +1,71 @@
-import type { Client } from "discord.js";
+import { HttpLayerRouter, HttpServerResponse } from "@effect/platform"
+import { BunHttpServer } from "@effect/platform-bun"
+import { Context, Effect, Layer } from "effect"
+import { AppConfig } from "../config"
+import { DiscordClient } from "../discord/client"
+import { ThreadAgentPool } from "../sandbox/pool"
 
-type HealthDependencies = {
-  client: Client;
-  isCleanupLoopRunning: () => boolean;
-  getActiveSessionCount: () => Promise<number>;
-};
+export declare namespace HealthServer {
+  export interface Service {
+    readonly started: true
+  }
+}
 
-export function startHealthServer(host: string, port: number, deps: HealthDependencies): Bun.Server<unknown> {
-  const startedAt = Date.now();
+export class HealthServer extends Context.Tag("@discord/HealthServer")<HealthServer, HealthServer.Service>() {
+  static readonly layer = Layer.scoped(
+    HealthServer,
+    Effect.gen(function* () {
+      const config = yield* AppConfig
+      const client = yield* DiscordClient
+      const pool = yield* ThreadAgentPool
+      const startedAt = Date.now()
 
-  return Bun.serve({
-    hostname: host,
-    port,
-    fetch: async (request) => {
-      const url = new URL(request.url);
+      const routes = HttpLayerRouter.use((router) =>
+        Effect.all([
+          router.add(
+            "GET",
+            "/healthz",
+            Effect.gen(function* () {
+              const activeSessions = yield* pool.getActiveSessionCount().pipe(
+                Effect.catchAll(() => Effect.succeed(0)),
+              )
+              return HttpServerResponse.unsafeJson({
+                ok: true,
+                uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+                discordReady: client.isReady(),
+                activeSessions,
+              })
+            }),
+          ),
+          router.add(
+            "GET",
+            "/readyz",
+            Effect.sync(() => {
+              const ready = client.isReady()
+              return HttpServerResponse.unsafeJson({ ok: ready, discordReady: ready }, { status: ready ? 200 : 503 })
+            }),
+          ),
+        ]),
+      )
 
-      if (url.pathname === "/healthz") {
-        const activeSessions = await deps.getActiveSessionCount().catch(() => 0);
-        return Response.json({
-          ok: true,
-          uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
-          discordReady: deps.client.isReady(),
-          cleanupLoopRunning: deps.isCleanupLoopRunning(),
-          activeSessions,
-        });
+      const server = HttpLayerRouter.serve(routes, { disableLogger: true, disableListenLog: true }).pipe(
+        Layer.provide(
+          BunHttpServer.layer({
+            hostname: config.healthHost,
+            port: config.healthPort,
+          }),
+        ),
+      )
+
+      yield* Layer.launch(server).pipe(Effect.forkScoped)
+
+      yield* Effect.logInfo("Health server started").pipe(
+        Effect.annotateLogs({ event: "health.server.started", host: config.healthHost, port: config.healthPort }),
+      )
+
+      return {
+        started: true as const,
       }
-
-      if (url.pathname === "/readyz") {
-        const ready = deps.client.isReady();
-        return Response.json(
-          {
-            ok: ready,
-            discordReady: ready,
-          },
-          { status: ready ? 200 : 503 },
-        );
-      }
-
-      return new Response("Not Found", { status: 404 });
-    },
-  });
+    }),
+  )
 }

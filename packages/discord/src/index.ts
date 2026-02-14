@@ -1,83 +1,80 @@
-import { getEnv } from "./config";
-import { createDiscordClient } from "./discord/client";
-import { createMessageHandler } from "./discord/handlers/message-create";
-import { initializeDatabase } from "./db/init";
-import { startHealthServer } from "./http/health";
-import { logger } from "./observability/logger";
-import { SandboxManager } from "./sandbox/manager";
+import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic"
+import { FetchHttpClient } from "@effect/platform"
+import { BunContext, BunRuntime } from "@effect/platform-bun"
+import { Effect, Layer } from "effect"
+import { DiscordConversationServicesLive } from "./conversation/implementations/discord"
+import { Conversation } from "./conversation/services/conversation"
+import { ConversationLedger } from "./conversation/services/ledger"
+import { AppConfig } from "./config"
+import { SqliteDb } from "./db/client"
+import { DiscordClient } from "./discord/client"
+import { TurnRouter } from "./discord/turn-routing"
+import { HealthServer } from "./http/health"
+import { LoggerLive } from "./observability/logger"
+import { DaytonaService } from "./sandbox/daytona"
+import { OpenCodeClient } from "./sandbox/opencode-client"
+import { ThreadAgentPool } from "./sandbox/pool"
+import { SandboxProvisioner } from "./sandbox/provisioner"
+import { SessionStore } from "./sessions/store"
 
-async function main() {
-  const env = getEnv();
-  logger.info({ event: "app.starting", component: "index", message: "Starting Discord bot" });
-  await initializeDatabase();
-  logger.info({ event: "db.ready", component: "index", message: "Database ready" });
+const AnthropicLayer = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    return AnthropicLanguageModel.layer({ model: config.turnRoutingModel }).pipe(
+      Layer.provide(AnthropicClient.layer({
+        apiKey: config.openCodeZenApiKey,
+        apiUrl: "https://opencode.ai/zen",
+      })),
+      Layer.provide(FetchHttpClient.layer),
+    )
+  }),
+)
 
-  const client = createDiscordClient();
-  const sandboxManager = new SandboxManager();
-  const healthServer = startHealthServer(env.HEALTH_HOST, env.HEALTH_PORT, {
-    client,
-    isCleanupLoopRunning: () => sandboxManager.isCleanupLoopRunning(),
-    getActiveSessionCount: () => sandboxManager.getActiveSessionCount(),
-  });
+type AppServices =
+  | AppConfig
+  | DiscordClient
+  | HealthServer
+  | OpenCodeClient
+  | SessionStore
+  | DaytonaService
+  | TurnRouter
+  | SandboxProvisioner
+  | ThreadAgentPool
+  | ConversationLedger
+  | Conversation
 
-  logger.info({
-    event: "health.server.started",
-    component: "index",
-    message: "Health server started",
-    host: env.HEALTH_HOST,
-    port: env.HEALTH_PORT,
-  });
+const BaseLayer = Layer.mergeAll(AppConfig.layer, FetchHttpClient.layer, BunContext.layer, LoggerLive)
+const WithSqlite = Layer.provideMerge(SqliteDb.layer, BaseLayer)
+const WithAnthropic = Layer.provideMerge(AnthropicLayer, WithSqlite)
+const WithDaytona = Layer.provideMerge(DaytonaService.layer, WithAnthropic)
+const WithOpenCode = Layer.provideMerge(OpenCodeClient.layer, WithDaytona)
+const WithRouting = Layer.provideMerge(TurnRouter.layer, WithOpenCode)
+const WithSessions = Layer.provideMerge(SessionStore.layer, WithRouting)
+const WithProvisioner = Layer.provideMerge(SandboxProvisioner.layer, WithSessions)
+const WithSandbox = Layer.provideMerge(ThreadAgentPool.layer, WithProvisioner)
+const WithLedger = Layer.provideMerge(ConversationLedger.layer, WithSandbox)
+const WithDiscord = Layer.provideMerge(DiscordClient.layer, WithLedger)
+const WithDiscordConversation = Layer.provideMerge(DiscordConversationServicesLive, WithDiscord)
+const WithConversation = Layer.provideMerge(Conversation.layer, WithDiscordConversation)
+const AppLayer = Layer.provideMerge(HealthServer.layer, WithConversation) as Layer.Layer<AppServices | SqliteDb, never, never>
 
-  // Register message handler
-  const messageHandler = createMessageHandler(client, sandboxManager);
-  client.on("messageCreate", messageHandler);
+const main = Effect.gen(function* () {
+  const client = yield* DiscordClient
+  const conversation = yield* Conversation
+  yield* ThreadAgentPool
+  yield* HealthServer
 
-  // Ready event
-  client.on("clientReady", () => {
-    logger.info({
-      event: "discord.ready",
-      component: "index",
-      message: "Discord client ready",
-      tag: client.user?.tag,
-      allowedChannels: env.ALLOWED_CHANNEL_IDS,
-    });
-    sandboxManager.startCleanupLoop();
-  });
+  yield* Effect.forkScoped(conversation.run)
+  yield* Effect.logInfo("Discord bot ready").pipe(
+    Effect.annotateLogs({ event: "discord.ready", tag: client.user?.tag }),
+  )
 
-  // Login
-  await client.login(env.DISCORD_TOKEN);
+  yield* Effect.logInfo("Discord bot started")
+  return yield* Effect.never
+})
 
-  let shuttingDown = false;
-
-  // Graceful shutdown
-  const shutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-
-    logger.info({
-      event: "app.shutdown.start",
-      component: "index",
-      message: "Shutting down",
-      signal,
-    });
-    healthServer.stop();
-    sandboxManager.stopCleanupLoop();
-    await sandboxManager.destroyAll();
-    client.destroy();
-    logger.info({ event: "app.shutdown.complete", component: "index", message: "Shutdown complete" });
-    process.exit(0);
-  };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-}
-
-main().catch((err) => {
-  logger.error({
-    event: "app.fatal",
-    component: "index",
-    message: "Fatal error",
-    error: err,
-  });
-  process.exit(1);
-});
+main.pipe(
+  Effect.provide(AppLayer),
+  Effect.scoped,
+  BunRuntime.runMain,
+)
