@@ -79,7 +79,6 @@
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/script": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",
-    "adm-zip": "0.5.16",
     "typescript": "catalog:"
   },
   "repository": {
