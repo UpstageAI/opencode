@@ -8,6 +8,8 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
 
 # Bun
 *.lockb
@@ -33,6 +35,7 @@ Thumbs.db
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+data/
 
 # Sensitive
 .censitive
