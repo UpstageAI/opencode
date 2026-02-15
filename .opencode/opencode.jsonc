@@ -3,6 +3,7 @@
   // "enterprise": {
   //   "url": "https://enterprise.dev.opencode.ai",
   // },
+  "references": ["git@github.com:Effect-TS/effect.git"],
   "provider": {
     "opencode": {
       "options": {},

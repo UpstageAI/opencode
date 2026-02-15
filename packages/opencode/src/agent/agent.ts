@@ -11,6 +11,7 @@ import { ProviderTransform } from "../provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_REFERENCE from "./prompt/reference.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
@@ -19,6 +20,7 @@ import { Global } from "@/global"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
+import { Reference } from "@/reference"
 
 export namespace Agent {
   export const Info = z
@@ -153,6 +155,37 @@ export namespace Agent {
         mode: "subagent",
         native: true,
       },
+      ...(cfg.references?.length
+        ? {
+            reference: {
+              name: "reference",
+              description: `Search across referenced projects configured in opencode.json under "references". Use this to query code in external repositories.\n\nAvailable references:\n${cfg.references.map((r) => `- ${r}`).join("\n")}`,
+              permission: PermissionNext.merge(
+                defaults,
+                PermissionNext.fromConfig({
+                  "*": "deny",
+                  grep: "allow",
+                  glob: "allow",
+                  list: "allow",
+                  bash: "allow",
+                  webfetch: "allow",
+                  websearch: "allow",
+                  codesearch: "allow",
+                  read: "allow",
+                  lsp: "allow",
+                  external_directory: {
+                    [Truncate.GLOB]: "allow",
+                    [path.join(Global.Path.reference, "*")]: "allow",
+                  },
+                }),
+                user,
+              ),
+              options: {},
+              mode: "subagent",
+              native: true,
+            },
+          }
+        : {}),
       compaction: {
         name: "compaction",
         mode: "primary",
@@ -250,7 +283,20 @@ export namespace Agent {
   })
 
   export async function get(agent: string) {
-    return state().then((x) => x[agent])
+    const result = await state().then((x) => x[agent])
+    if (!result) return result
+    if (agent === "reference") {
+      const refs = await Reference.list()
+      const fresh = await Promise.all(refs.map((r) => Reference.ensureFresh(r)))
+      const valid = fresh.filter(Boolean) as Reference.Info[]
+      const info =
+        valid.length > 0 ? valid.map((r) => `- ${r.url} at ${r.path}`).join("\n") : "No references available."
+      return {
+        ...result,
+        prompt: PROMPT_REFERENCE + "\n\nAvailable references:\n" + info,
+      }
+    }
+    return result
   }
 
   export async function list() {

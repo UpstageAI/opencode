@@ -20,6 +20,7 @@ export namespace Global {
     bin: path.join(data, "bin"),
     log: path.join(data, "log"),
     cache,
+    reference: path.join(cache, "references"),
     config,
     state,
   }
@@ -31,6 +32,7 @@ await Promise.all([
   fs.mkdir(Global.Path.state, { recursive: true }),
   fs.mkdir(Global.Path.log, { recursive: true }),
   fs.mkdir(Global.Path.bin, { recursive: true }),
+  fs.mkdir(Global.Path.reference, { recursive: true }),
 ])
 
 const CACHE_VERSION = "21"

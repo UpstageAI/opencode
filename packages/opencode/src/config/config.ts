@@ -1192,6 +1192,10 @@ export namespace Config {
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
         })
         .optional(),
+      references: z
+        .array(z.string())
+        .optional()
+        .describe("Git repositories or local paths to reference from subagents"),
     })
     .strict()
     .meta({
