@@ -34,6 +34,7 @@
     "active": true,
     "targets": ["deb", "rpm", "dmg", "nsis", "app"],
     "externalBin": ["sidecars/opencode-cli"],
+    "resources": ["resources/vc_redist.x64.exe"],
     "linux": {
       "rpm": {
         "compression": {
@@ -48,7 +49,8 @@
       "nsis": {
         "installerIcon": "icons/dev/icon.ico",
         "headerImage": "assets/nsis-header.bmp",
-        "sidebarImage": "assets/nsis-sidebar.bmp"
+        "sidebarImage": "assets/nsis-sidebar.bmp",
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   },
