@@ -9,6 +9,7 @@ import { Installation } from "@/installation"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
+import { Session } from "../../session"
 import { errors } from "../error"
 
 const log = Log.create({ service: "server" })
@@ -103,6 +104,54 @@ export const GlobalRoutes = lazy(() =>
             })
           })
         })
+      },
+    )
+    .get(
+      "/session",
+      describeRoute({
+        summary: "List sessions",
+        description:
+          "Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.",
+        operationId: "global.session.list",
+        responses: {
+          200: {
+            description: "List of sessions",
+            content: {
+              "application/json": {
+                schema: resolver(Session.GlobalInfo.array()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          directory: z.string().optional().meta({ description: "Filter sessions by project directory" }),
+          roots: z.coerce.boolean().optional().meta({ description: "Only return root sessions (no parentID)" }),
+          start: z.coerce
+            .number()
+            .optional()
+            .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
+          search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
+          limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
+          archived: z.coerce.boolean().optional().meta({ description: "Include archived sessions (default false)" }),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        const sessions: Session.GlobalInfo[] = []
+        for await (const session of Session.listGlobal({
+          directory: query.directory,
+          roots: query.roots,
+          start: query.start,
+          search: query.search,
+          limit: query.limit,
+          archived: query.archived,
+        })) {
+          sessions.push(session)
+        }
+        return c.json(sessions)
       },
     )
     .get(
