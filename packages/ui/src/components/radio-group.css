@@ -1,15 +1,29 @@
 [data-component="radio-group"] {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   gap: calc(var(--spacing) * 2);
+  width: fit-content;
+
+  --radio-group-padding: 2px;
+  --radio-group-gap: 2px;
+  --radio-group-radius: var(--radius-sm);
+  --radio-group-border-width: 0.5px;
+  --radio-group-border-color: var(--border-weak-base);
+  --radio-group-bg: var(--surface-inset-base);
+  --radio-group-indicator-bg: var(--surface-raised-stronger-non-alpha);
+  --radio-group-indicator-shadow: var(--shadow-xs-border);
 
   [data-slot="radio-group-wrapper"] {
     all: unset;
-    background-color: var(--surface-base);
-    border-radius: var(--radius-md);
+    background-color: var(--radio-group-bg);
+    border: var(--radio-group-border-width) solid var(--radio-group-border-color);
+    border-radius: var(--radio-group-radius);
     box-shadow: var(--shadow-xs-border);
+    box-sizing: border-box;
+    display: inline-flex;
+    overflow: clip;
     margin: 0;
-    padding: 0;
+    padding: var(--radio-group-padding);
     position: relative;
     width: fit-content;
   }
@@ -18,44 +32,29 @@
     display: inline-flex;
     list-style: none;
     flex-direction: row;
+    gap: var(--radio-group-gap);
+    position: relative;
+    z-index: 1;
   }
 
   [data-slot="radio-group-indicator"] {
-    background: var(--button-secondary-base);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-xs-border);
+    background: var(--radio-group-indicator-bg);
+    border-radius: calc(var(--radio-group-radius) - var(--radio-group-padding));
+    box-shadow: var(--radio-group-indicator-shadow);
     content: "";
     opacity: var(--indicator-opacity, 1);
     position: absolute;
     transition:
-      opacity 300ms ease-in-out,
-      box-shadow 100ms ease-in-out,
-      width 150ms ease,
-      height 150ms ease,
-      transform 150ms ease;
+      opacity 200ms ease-out,
+      box-shadow 120ms ease-out,
+      width 200ms ease-out,
+      height 200ms ease-out,
+      transform 200ms ease-out;
+    will-change: transform, width, height;
   }
 
   [data-slot="radio-group-item"] {
     position: relative;
-  }
-
-  /* Separator between items */
-  [data-slot="radio-group-item"]:not(:first-of-type)::before {
-    background: var(--border-weak-base);
-    border-radius: var(--radius-xs);
-    content: "";
-    inset: 6px 0;
-    position: absolute;
-    transition: opacity 150ms ease;
-    width: 1px;
-    transform: translateX(-0.5px);
-  }
-
-  /* Hide separator when item or previous item is checked */
-  [data-slot="radio-group-item"]:has([data-slot="radio-group-item-input"][data-checked])::before,
-  [data-slot="radio-group-item"]:has([data-slot="radio-group-item-input"][data-checked])
-    + [data-slot="radio-group-item"]::before {
-    opacity: 0;
   }
 
   [data-slot="radio-group-item-label"] {
@@ -63,18 +62,22 @@
     font-family: var(--font-family-sans);
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-md);
+    border-radius: calc(var(--radio-group-radius) - var(--radio-group-padding) - 1px);
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-wrap: nowrap;
     gap: calc(var(--spacing) * 1);
     line-height: 1;
-    padding: 6px 12px;
+    min-height: 24px;
+    padding: 5px 10px;
     place-content: center;
     position: relative;
-    transition-duration: 150ms;
-    transition-property: color, opacity;
-    transition-timing-function: ease-in-out;
+    transition:
+      color 150ms ease-out,
+      background-color 150ms ease-out,
+      opacity 150ms ease-out;
     user-select: none;
   }
 
@@ -101,6 +104,7 @@
 
   [data-slot="radio-group-item-input"]:not([data-checked], [data-disabled])
     + [data-slot="radio-group-item-label"]:hover {
+    background-color: var(--surface-inset-base-hover);
     color: var(--text-base);
   }
 
@@ -112,7 +116,7 @@
   /* Focus state */
   [data-slot="radio-group-wrapper"]:has([data-slot="radio-group-item-input"]:focus-visible)
     [data-slot="radio-group-indicator"] {
-    box-shadow: var(--shadow-xs-border-focus);
+    box-shadow: var(--shadow-xs-border-focus), var(--radio-group-indicator-shadow);
   }
 
   /* Hide indicator when nothing is checked */
@@ -126,26 +130,15 @@
     flex-direction: column;
   }
 
-  &[aria-orientation="vertical"] [data-slot="radio-group-item"]:not(:first-of-type)::before {
-    height: 1px;
-    width: auto;
-    inset: 0 6px;
-    transform: translateY(-0.5px);
-  }
-
   /* Small size variant */
   &[data-size="small"] {
+    --radio-group-padding: 1px;
+    --radio-group-gap: 1px;
+
     [data-slot="radio-group-item-label"] {
       font-size: 12px;
+      min-height: 20px;
       padding: 4px 8px;
-    }
-
-    [data-slot="radio-group-item"]:not(:first-of-type)::before {
-      inset: 4px 0;
-    }
-
-    &[aria-orientation="vertical"] [data-slot="radio-group-item"]:not(:first-of-type)::before {
-      inset: 0 4px;
     }
   }
 
