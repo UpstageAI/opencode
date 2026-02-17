@@ -7,6 +7,7 @@
   --radio-group-padding: 2px;
   --radio-group-gap: 2px;
   --radio-group-radius: var(--radius-sm);
+  --radio-group-transition-duration: 200ms;
   --radio-group-border-width: 0.5px;
   --radio-group-border-color: var(--border-weak-base);
   --radio-group-bg: var(--surface-inset-base);
@@ -45,11 +46,14 @@
     opacity: var(--indicator-opacity, 1);
     position: absolute;
     transition:
-      opacity 200ms ease-out,
+      opacity var(--radio-group-transition-duration) ease-out,
       box-shadow 120ms ease-out,
-      width 200ms ease-out,
-      height 200ms ease-out,
-      transform 200ms ease-out;
+      width var(--radio-group-transition-duration) ease-out,
+      height var(--radio-group-transition-duration) ease-out,
+      transform var(--radio-group-transition-duration) ease-out,
+      translate var(--radio-group-transition-duration) ease-out,
+      left var(--radio-group-transition-duration) ease-out,
+      top var(--radio-group-transition-duration) ease-out;
     will-change: transform, width, height;
   }
 
