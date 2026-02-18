@@ -1,7 +1,6 @@
 import z from "zod"
 import * as path from "path"
 import * as fs from "fs/promises"
-import { readFileSync } from "fs"
 import { Log } from "../util/log"
 
 export namespace Patch {
@@ -308,16 +307,18 @@ export namespace Patch {
     content: string
   }
 
-  export function deriveNewContentsFromChunks(filePath: string, chunks: UpdateFileChunk[]): ApplyPatchFileUpdate {
-    // Read original file content
-    let originalContent: string
-    try {
-      originalContent = readFileSync(filePath, "utf-8")
-    } catch (error) {
-      throw new Error(`Failed to read file ${filePath}: ${error}`)
-    }
+  export async function deriveNewContentsFromChunks(
+    filePath: string,
+    chunks: UpdateFileChunk[],
+    originalContent?: string,
+  ): Promise<ApplyPatchFileUpdate> {
+    const content =
+      originalContent ??
+      (await fs.readFile(filePath, "utf-8").catch((error) => {
+        throw new Error(`Failed to read file ${filePath}: ${error}`)
+      }))
 
-    let originalLines = originalContent.split("\n")
+    let originalLines = content.split("\n")
 
     // Drop trailing empty element for consistent line counting
     if (originalLines.length > 0 && originalLines[originalLines.length - 1] === "") {
@@ -335,7 +336,7 @@ export namespace Patch {
     const newContent = newLines.join("\n")
 
     // Generate unified diff
-    const unifiedDiff = generateUnifiedDiff(originalContent, newContent)
+    const unifiedDiff = generateUnifiedDiff(content, newContent)
 
     return {
       unified_diff: unifiedDiff,
@@ -545,7 +546,7 @@ export namespace Patch {
           break
 
         case "update":
-          const fileUpdate = deriveNewContentsFromChunks(hunk.path, hunk.chunks)
+          const fileUpdate = await deriveNewContentsFromChunks(hunk.path, hunk.chunks)
 
           if (hunk.move_path) {
             // Handle file move
@@ -641,7 +642,7 @@ export namespace Patch {
             case "update":
               const updatePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const fileUpdate = deriveNewContentsFromChunks(updatePath, hunk.chunks)
+                const fileUpdate = await deriveNewContentsFromChunks(updatePath, hunk.chunks)
                 changes.set(resolvedPath, {
                   type: "update",
                   unified_diff: fileUpdate.unified_diff,

@@ -101,7 +101,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
           // Apply the update chunks to get new content
           try {
-            const fileUpdate = Patch.deriveNewContentsFromChunks(filePath, hunk.chunks)
+            const fileUpdate = await Patch.deriveNewContentsFromChunks(filePath, hunk.chunks, oldContent)
             newContent = fileUpdate.content
           } catch (error) {
             throw new Error(`apply_patch verification failed: ${error}`)
