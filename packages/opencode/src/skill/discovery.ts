@@ -27,7 +27,7 @@ export namespace Discovery {
           log.error("failed to download", { url, status: response.status })
           return false
         }
-        await Filesystem.write(dest, await response.text())
+        if (response.body) await Filesystem.writeStream(dest, response.body)
         return true
       })
       .catch((err) => {
