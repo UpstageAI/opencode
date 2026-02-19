@@ -7,6 +7,7 @@ import { NamedError } from "@opencode-ai/util/error"
 import { lazy } from "../util/lazy"
 import { $ } from "bun"
 import { Filesystem } from "../util/filesystem"
+import { Process } from "../util/process"
 
 import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
 import { Log } from "@/util/log"
@@ -153,7 +154,7 @@ export namespace Ripgrep {
         if (platformKey.endsWith("-darwin")) args.push("--include=*/rg")
         if (platformKey.endsWith("-linux")) args.push("--wildcards", "*/rg")
 
-        const proc = Bun.spawn(args, {
+        const proc = Process.spawn(args, {
           cwd: Global.Path.bin,
           stderr: "pipe",
           stdout: "pipe",
@@ -162,7 +163,7 @@ export namespace Ripgrep {
         if (proc.exitCode !== 0)
           throw new ExtractionFailedError({
             filepath,
-            stderr: await Bun.readableStreamToText(proc.stderr),
+            stderr: proc.stderr ? await Bun.readableStreamToText(proc.stderr) : "",
           })
       }
       if (config.extension === "zip") {
@@ -227,8 +228,7 @@ export namespace Ripgrep {
       }
     }
 
-    // Bun.spawn should throw this, but it incorrectly reports that the executable does not exist.
-    // See https://github.com/oven-sh/bun/issues/24012
+    // Guard against invalid cwd to provide a consistent ENOENT error.
     if (!(await fs.stat(input.cwd).catch(() => undefined))?.isDirectory()) {
       throw Object.assign(new Error(`No such file or directory: '${input.cwd}'`), {
         code: "ENOENT",
@@ -237,13 +237,16 @@ export namespace Ripgrep {
       })
     }
 
-    const proc = Bun.spawn(args, {
+    const proc = Process.spawn(args, {
       cwd: input.cwd,
       stdout: "pipe",
       stderr: "ignore",
-      maxBuffer: 1024 * 1024 * 20,
       signal: input.signal,
     })
+
+    if (!proc.stdout) {
+      throw new Error("Process output not available")
+    }
 
     const reader = proc.stdout.getReader()
     const decoder = new TextDecoder()

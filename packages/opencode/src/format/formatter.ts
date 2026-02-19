@@ -2,6 +2,7 @@ import { readableStreamToText } from "bun"
 import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
+import { Process } from "../util/process"
 import { Flag } from "@/flag/flag"
 
 export interface Info {
@@ -213,11 +214,12 @@ export const rlang: Info = {
     if (airPath == null) return false
 
     try {
-      const proc = Bun.spawn(["air", "--help"], {
+      const proc = Process.spawn(["air", "--help"], {
         stdout: "pipe",
         stderr: "pipe",
       })
       await proc.exited
+      if (!proc.stdout) return false
       const output = await readableStreamToText(proc.stdout)
 
       // Check for "Air: An R language server and formatter"
@@ -238,7 +240,7 @@ export const uvformat: Info = {
   async enabled() {
     if (await ruff.enabled()) return false
     if (Bun.which("uv") !== null) {
-      const proc = Bun.spawn(["uv", "format", "--help"], { stderr: "pipe", stdout: "pipe" })
+      const proc = Process.spawn(["uv", "format", "--help"], { stderr: "pipe", stdout: "pipe" })
       const code = await proc.exited
       return code === 0
     }

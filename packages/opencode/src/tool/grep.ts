@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Filesystem } from "../util/filesystem"
 import { Ripgrep } from "../file/ripgrep"
+import { Process } from "../util/process"
 
 import DESCRIPTION from "./grep.txt"
 import { Instance } from "../project/instance"
@@ -44,11 +45,15 @@ export const GrepTool = Tool.define("grep", {
     }
     args.push(searchPath)
 
-    const proc = Bun.spawn([rgPath, ...args], {
+    const proc = Process.spawn([rgPath, ...args], {
       stdout: "pipe",
       stderr: "pipe",
       signal: ctx.abort,
     })
+
+    if (!proc.stdout || !proc.stderr) {
+      throw new Error("Process output not available")
+    }
 
     const output = await new Response(proc.stdout).text()
     const errorOutput = await new Response(proc.stderr).text()

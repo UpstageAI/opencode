@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { Process } from "../packages/opencode/src/util/process"
+
 async function sendToPostHog(event: string, properties: Record<string, any>) {
   const key = process.env["POSTHOG_KEY"]
 
@@ -59,7 +61,7 @@ async function fetchNpmDownloads(packageName: string): Promise<number> {
       console.warn(`Failed to fetch npm downloads for ${packageName}: ${response.status}`)
       return 0
     }
-    const data: NpmDownloadsRange = await response.json()
+    const data = (await response.json()) as NpmDownloadsRange
     return data.downloads.reduce((total, day) => total + day.downloads, 0)
   } catch (error) {
     console.warn(`Error fetching npm downloads for ${packageName}:`, error)
@@ -80,7 +82,7 @@ async function fetchReleases(): Promise<Release[]> {
       throw new Error(`GitHub API error: ${response.status} ${response.statusText}`)
     }
 
-    const batch: Release[] = await response.json()
+    const batch = (await response.json()) as Release[]
     if (batch.length === 0) break
 
     releases.push(...batch)
@@ -137,12 +139,14 @@ async function save(githubTotal: number, npmDownloads: number) {
     const lines = content.trim().split("\n")
 
     for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim()
+      const item = lines[i]
+      if (!item) continue
+      const line = item.trim()
       if (line.startsWith("|") && !line.includes("Date") && !line.includes("---")) {
         const match = line.match(
           /\|\s*[\d-]+\s*\|\s*([\d,]+)\s*(?:\([^)]*\))?\s*\|\s*([\d,]+)\s*(?:\([^)]*\))?\s*\|\s*([\d,]+)\s*(?:\([^)]*\))?\s*\|/,
         )
-        if (match) {
+        if (match?.[1] && match[2] && match[3]) {
           previousGithub = parseInt(match[1].replace(/,/g, ""))
           previousNpm = parseInt(match[2].replace(/,/g, ""))
           previousTotal = parseInt(match[3].replace(/,/g, ""))
@@ -181,7 +185,7 @@ async function save(githubTotal: number, npmDownloads: number) {
   }
 
   await Bun.write(file, content + line)
-  await Bun.spawn(["bunx", "prettier", "--write", file]).exited
+  await Process.spawn(["bunx", "prettier", "--write", file]).exited
 
   console.log(
     `\nAppended stats to ${file}: GitHub ${githubTotal.toLocaleString()}${githubChangeStr}, npm ${npmDownloads.toLocaleString()}${npmChangeStr}, Total ${total.toLocaleString()}${totalChangeStr}`,

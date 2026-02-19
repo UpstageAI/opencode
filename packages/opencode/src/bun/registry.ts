@@ -1,5 +1,6 @@
 import { readableStreamToText, semver } from "bun"
 import { Log } from "../util/log"
+import { Process } from "../util/process"
 
 export namespace PackageRegistry {
   const log = Log.create({ service: "bun" })
@@ -9,7 +10,7 @@ export namespace PackageRegistry {
   }
 
   export async function info(pkg: string, field: string, cwd?: string): Promise<string | null> {
-    const result = Bun.spawn([which(), "info", pkg, field], {
+    const result = Process.spawn([which(), "info", pkg, field], {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
