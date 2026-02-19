@@ -93,6 +93,7 @@ export namespace Skill {
         absolute: true,
         include: "file",
         dot: true,
+        symlink: true,
       })
         .then((matches) => Promise.all(matches.map(addSkill)))
         .catch((error) => {
@@ -124,6 +125,7 @@ export namespace Skill {
         cwd: dir,
         absolute: true,
         include: "file",
+        symlink: true,
       })
       for (const match of matches) {
         await addSkill(match)
@@ -143,6 +145,7 @@ export namespace Skill {
         cwd: resolved,
         absolute: true,
         include: "file",
+        symlink: true,
       })
       for (const match of matches) {
         await addSkill(match)
@@ -158,6 +161,7 @@ export namespace Skill {
           cwd: dir,
           absolute: true,
           include: "file",
+          symlink: true,
         })
         for (const match of matches) {
           await addSkill(match)

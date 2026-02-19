@@ -409,6 +409,7 @@ async function getCustomThemes() {
       cwd: dir,
       absolute: true,
       dot: true,
+      symlink: true,
     })) {
       const name = path.basename(item, ".json")
       result[name] = await Filesystem.readJson(item)

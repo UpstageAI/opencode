@@ -358,6 +358,7 @@ export namespace Config {
       cwd: dir,
       absolute: true,
       dot: true,
+      symlink: true,
     })) {
       const md = await ConfigMarkdown.parse(item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
@@ -396,6 +397,7 @@ export namespace Config {
       cwd: dir,
       absolute: true,
       dot: true,
+      symlink: true,
     })) {
       const md = await ConfigMarkdown.parse(item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
@@ -433,6 +435,7 @@ export namespace Config {
       cwd: dir,
       absolute: true,
       dot: true,
+      symlink: true,
     })) {
       const md = await ConfigMarkdown.parse(item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
@@ -469,6 +472,7 @@ export namespace Config {
       cwd: dir,
       absolute: true,
       dot: true,
+      symlink: true,
     })) {
       plugins.push(pathToFileURL(item).href)
     }

@@ -16,7 +16,7 @@ export namespace Glob {
       absolute: options.absolute,
       dot: options.dot,
       follow: options.symlink ?? false,
-      nodir: options.include === "file",
+      nodir: options.include !== "all",
     }
   }
 
