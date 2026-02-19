@@ -15,6 +15,40 @@ import { terminalWriter } from "@/utils/terminal-writer"
 
 const TOGGLE_TERMINAL_ID = "terminal.toggle"
 const DEFAULT_TOGGLE_TERMINAL_KEYBIND = "ctrl+`"
+const FRAME_META = 0
+const FRAME_OUTPUT = 1
+const FRAME_INPUT = 2
+const encoder = new TextEncoder()
+
+const connection = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const frameInput = (id: string, data: string) => {
+  const channel = encoder.encode(id)
+  const body = encoder.encode(data)
+  const out = new Uint8Array(2 + channel.length + body.length)
+  out[0] = FRAME_INPUT
+  out[1] = channel.length
+  out.set(channel, 2)
+  out.set(body, 2 + channel.length)
+  return out
+}
+
+const frameOutput = (bytes: Uint8Array, decoder: TextDecoder) => {
+  if (bytes[0] !== FRAME_OUTPUT) return
+  const size = bytes[1]
+  if (!Number.isSafeInteger(size) || size < 0) return
+  if (bytes.length < 2 + size) return
+  return {
+    connection: decoder.decode(bytes.subarray(2, 2 + size)),
+    data: decoder.decode(bytes.subarray(2 + size)),
+  }
+}
+
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
   onSubmit?: () => void
@@ -396,8 +430,10 @@ export const Terminal = (props: TerminalProps) => {
         scheduleSize(size.cols, size.rows)
       })
       cleanups.push(() => disposeIfDisposable(onResize))
+      const connectionID = connection()
       const onData = t.onData((data) => {
-        if (ws?.readyState === WebSocket.OPEN) ws.send(data)
+        if (ws?.readyState !== WebSocket.OPEN) return
+        ws.send(frameInput(connectionID, data))
       })
       cleanups.push(() => disposeIfDisposable(onData))
       const onKey = t.onKey((key) => {
@@ -450,6 +486,7 @@ export const Terminal = (props: TerminalProps) => {
       const url = new URL(sdk.url + `/pty/${local.pty.id}/connect`)
       url.searchParams.set("directory", sdk.directory)
       url.searchParams.set("cursor", String(start !== undefined ? start : local.pty.buffer ? -1 : 0))
+      url.searchParams.set("connection", connectionID)
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
       url.username = server.current?.http.username ?? ""
       url.password = server.current?.http.password ?? ""
@@ -471,24 +508,33 @@ export const Terminal = (props: TerminalProps) => {
         if (closing) return
         if (event.data instanceof ArrayBuffer) {
           const bytes = new Uint8Array(event.data)
-          if (bytes[0] !== 0) return
-          const json = decoder.decode(bytes.subarray(1))
-          try {
-            const meta = JSON.parse(json) as { cursor?: unknown }
-            const next = meta?.cursor
-            if (typeof next === "number" && Number.isSafeInteger(next) && next >= 0) {
-              cursor = next
+          if (bytes[0] === FRAME_META) {
+            const json = decoder.decode(bytes.subarray(1))
+            try {
+              const meta = JSON.parse(json) as { cursor?: unknown; connection?: unknown }
+              if (typeof meta?.connection === "string" && meta.connection !== connectionID) return
+              const next = meta?.cursor
+              if (typeof next === "number" && Number.isSafeInteger(next) && next >= 0) {
+                cursor = next
+              }
+            } catch (err) {
+              debugTerminal("invalid websocket control frame", err)
             }
-          } catch (err) {
-            debugTerminal("invalid websocket control frame", err)
+            return
           }
+
+          const frame = frameOutput(bytes, decoder)
+          if (!frame) return
+          if (frame.connection !== connectionID) return
+          if (!frame.data) return
+          output?.push(frame.data)
+          cursor += frame.data.length
           return
         }
 
-        const data = typeof event.data === "string" ? event.data : ""
-        if (!data) return
-        output?.push(data)
-        cursor += data.length
+        if (typeof event.data === "string") {
+          debugTerminal("ignoring unframed websocket output")
+        }
       }
       socket.addEventListener("message", handleMessage)
 

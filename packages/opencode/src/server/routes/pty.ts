@@ -1,11 +1,11 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
-import { upgradeWebSocket } from "hono/bun"
 import z from "zod"
 import { Pty } from "@/pty"
 import { NotFoundError } from "../../storage/db"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { upgradeWebSocket } from "../websocket"
 
 export const PtyRoutes = lazy(() =>
   new Hono()
@@ -158,6 +158,12 @@ export const PtyRoutes = lazy(() =>
           if (!Number.isSafeInteger(parsed) || parsed < -1) return
           return parsed
         })()
+        const connection = (() => {
+          const value = c.req.query("connection")
+          if (!value) return
+          if (value.length > 200) return
+          return value
+        })()
         let handler: ReturnType<typeof Pty.connect>
         if (!Pty.get(id)) throw new Error("Session not found")
 
@@ -177,15 +183,20 @@ export const PtyRoutes = lazy(() =>
 
         return {
           onOpen(_event, ws) {
-            const socket = ws.raw
-            if (!isSocket(socket)) {
+            if (!isSocket(ws)) {
               ws.close()
               return
             }
-            handler = Pty.connect(id, socket, cursor)
+            handler = Pty.connect(id, ws, cursor, connection)
           },
           onMessage(event) {
-            if (typeof event.data !== "string") return
+            if (
+              typeof event.data !== "string" &&
+              !(event.data instanceof ArrayBuffer) &&
+              !(event.data instanceof Uint8Array)
+            ) {
+              return
+            }
             handler?.onMessage(event.data)
           },
           onClose() {
