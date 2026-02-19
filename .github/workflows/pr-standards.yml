@@ -16,6 +16,7 @@ jobs:
       github.event.pull_request.user.login != 'fwang' &&
       github.event.pull_request.user.login != 'adamdotdevin' &&
       github.event.pull_request.user.login != 'iamdavidhill' &&
+      github.event.pull_request.user.login != 'R44VC0RP' &&
       github.event.pull_request.user.login != 'opencode-agent[bot]'
     runs-on: ubuntu-latest
     permissions:
