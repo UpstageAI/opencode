@@ -142,6 +142,8 @@ if (!skipInstall) {
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
 }
+await $`bun script/node-pty-helper.ts`
+
 for (const item of targets) {
   const name = [
     pkg.name,
