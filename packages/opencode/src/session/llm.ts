@@ -11,7 +11,7 @@ import {
   tool,
   jsonSchema,
 } from "ai"
-import { mergeDeep, pipe } from "remeda"
+import { clone, mergeDeep, pipe } from "remeda"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
@@ -80,7 +80,7 @@ export namespace LLM {
     )
 
     const header = system[0]
-    const original = structuredClone(system)
+    const original = clone(system)
     await Plugin.trigger(
       "experimental.chat.system.transform",
       { sessionID: input.sessionID, model: input.model },
@@ -210,18 +210,12 @@ export namespace LLM {
       maxOutputTokens,
       abortSignal: input.abort,
       headers: {
-        ...(input.model.providerID.startsWith("opencode")
-          ? {
-              "x-opencode-project": Instance.project.id,
-              "x-opencode-session": input.sessionID,
-              "x-opencode-request": input.user.id,
-              "x-opencode-client": Flag.OPENCODE_CLIENT,
-            }
-          : input.model.providerID !== "anthropic"
-            ? {
-                "User-Agent": `opencode/${Installation.VERSION}`,
-              }
-            : undefined),
+        ...(input.model.providerID.startsWith("opencode") && {
+          "x-opencode-project": Instance.project.id,
+          "x-opencode-session": input.sessionID,
+          "x-opencode-request": input.user.id,
+          "x-opencode-client": Flag.OPENCODE_CLIENT,
+        }),
         ...input.model.headers,
         ...headers,
       },
