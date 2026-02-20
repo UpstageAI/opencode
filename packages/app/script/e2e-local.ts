@@ -2,7 +2,6 @@ import fs from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { Process } from "../../opencode/src/util/process"
 
 async function freePort() {
   return await new Promise<number>((resolve, reject) => {
@@ -85,8 +84,8 @@ const runnerEnv = {
   PLAYWRIGHT_PORT: String(webPort),
 } satisfies Record<string, string>
 
-let seed: Process.Child | undefined
-let runner: Process.Child | undefined
+let seed: ReturnType<typeof Bun.spawn> | undefined
+let runner: ReturnType<typeof Bun.spawn> | undefined
 let server: { stop: () => Promise<void> | void } | undefined
 let inst: { Instance: { disposeAll: () => Promise<void> | void } } | undefined
 let cleaned = false
@@ -95,8 +94,8 @@ const cleanup = async () => {
   if (cleaned) return
   cleaned = true
 
-  seed?.kill("SIGTERM")
-  runner?.kill("SIGTERM")
+  if (seed && seed.exitCode === null) seed.kill("SIGTERM")
+  if (runner && runner.exitCode === null) runner.kill("SIGTERM")
 
   const jobs = [
     inst?.Instance.disposeAll(),
@@ -132,7 +131,7 @@ process.once("unhandledRejection", (error) => {
 let code = 1
 
 try {
-  seed = Process.spawn(["bun", "script/seed-e2e.ts"], {
+  seed = Bun.spawn(["bun", "script/seed-e2e.ts"], {
     cwd: opencodeDir,
     env: serverEnv,
     stdout: "inherit",
@@ -161,7 +160,7 @@ try {
     console.log(`opencode server listening on http://127.0.0.1:${serverPort}`)
 
     await waitForHealth(`http://127.0.0.1:${serverPort}/global/health`)
-    runner = Process.spawn(["bun", "test:e2e", ...extraArgs], {
+    runner = Bun.spawn(["bun", "test:e2e", ...extraArgs], {
       cwd: appDir,
       env: runnerEnv,
       stdout: "inherit",
