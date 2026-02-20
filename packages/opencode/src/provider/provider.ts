@@ -109,7 +109,7 @@ export namespace Provider {
     "@ai-sdk/github-copilot": createGitHubCopilotOpenAICompatible,
   }
 
-  type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
+  type CustomModelLoader = (sdk: any, model: Model, options?: Record<string, any>) => Promise<any>
   type CustomLoader = (provider: Info) => Promise<{
     autoload: boolean
     getModel?: CustomModelLoader
@@ -153,8 +153,9 @@ export namespace Provider {
     openai: async () => {
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.responses(modelID)
+        async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
+          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          return sdk.responses(model.api.id)
         },
         options: {},
       }
@@ -162,9 +163,12 @@ export namespace Provider {
     "github-copilot": async () => {
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(modelID)
-          return shouldUseCopilotResponsesApi(modelID) ? sdk.responses(modelID) : sdk.chat(modelID)
+        async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
+          const shape = model.api.shape
+          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
+          if (shape === "responses") return sdk.responses(model.api.id)
+          if (shape === "completions" || shape === "messages") return sdk.chat(model.api.id)
+          return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
       }
@@ -172,9 +176,12 @@ export namespace Provider {
     "github-copilot-enterprise": async () => {
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(modelID)
-          return shouldUseCopilotResponsesApi(modelID) ? sdk.responses(modelID) : sdk.chat(modelID)
+        async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
+          const shape = model.api.shape
+          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
+          if (shape === "responses") return sdk.responses(model.api.id)
+          if (shape === "completions" || shape === "messages") return sdk.chat(model.api.id)
+          return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
       }
@@ -182,12 +189,12 @@ export namespace Provider {
     azure: async () => {
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
+        async getModel(sdk: any, model: Model, options?: Record<string, any>) {
+          if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
+          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          if (model.api.shape === "responses") return sdk.responses(model.api.id)
+          if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
+          return sdk.responses(model.api.id)
         },
         options: {},
       }
@@ -196,12 +203,12 @@ export namespace Provider {
       const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
+        async getModel(sdk: any, model: Model, options?: Record<string, any>) {
+          if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
+          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          if (model.api.shape === "responses") return sdk.responses(model.api.id)
+          if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
+          return sdk.responses(model.api.id)
         },
         options: {
           baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
@@ -269,7 +276,8 @@ export namespace Provider {
       return {
         autoload: true,
         options: providerOptions,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+        async getModel(sdk: any, model: Model, options?: Record<string, any>) {
+          let modelID = model.api.id
           // Skip region prefixing if model already has a cross-region inference profile prefix
           // Models from models.dev may already include prefixes like us., eu., global., etc.
           const crossRegionPrefixes = ["global.", "us.", "eu.", "jp.", "apac.", "au."]
@@ -406,8 +414,8 @@ export namespace Provider {
             return fetch(input, { ...init, headers })
           },
         },
-        async getModel(sdk: any, modelID: string) {
-          const id = String(modelID).trim()
+        async getModel(sdk: any, model: Model) {
+          const id = String(model.api.id).trim()
           return sdk.languageModel(id)
         },
       }
@@ -423,8 +431,8 @@ export namespace Provider {
           project,
           location,
         },
-        async getModel(sdk: any, modelID) {
-          const id = String(modelID).trim()
+        async getModel(sdk: any, model: Model) {
+          const id = String(model.api.id).trim()
           return sdk.languageModel(id)
         },
       }
@@ -448,8 +456,8 @@ export namespace Provider {
       return {
         autoload: !!envServiceKey,
         options: envServiceKey ? { deploymentId, resourceGroup } : {},
-        async getModel(sdk: any, modelID: string) {
-          return sdk(modelID)
+        async getModel(sdk: any, model: Model) {
+          return sdk(model.api.id)
         },
       }
     },
@@ -494,8 +502,8 @@ export namespace Provider {
             ...(providerConfig?.options?.featureFlags || {}),
           },
         },
-        async getModel(sdk: ReturnType<typeof createGitLab>, modelID: string) {
-          return sdk.agenticChat(modelID, {
+        async getModel(sdk: ReturnType<typeof createGitLab>, model: Model) {
+          return sdk.agenticChat(model.api.id, {
             aiGatewayHeaders,
             featureFlags: {
               duo_agent_platform_agentic_chat: true,
@@ -524,8 +532,8 @@ export namespace Provider {
           apiKey,
           baseURL: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`,
         },
-        async getModel(sdk: any, modelID: string) {
-          return sdk.languageModel(modelID)
+        async getModel(sdk: any, model: Model) {
+          return sdk.languageModel(model.api.id)
         },
       }
     },
@@ -560,9 +568,9 @@ export namespace Provider {
 
       return {
         autoload: true,
-        async getModel(_sdk: any, modelID: string, _options?: Record<string, any>) {
+        async getModel(_sdk: any, model: Model, _options?: Record<string, any>) {
           // Model IDs use Unified API format: provider/model (e.g., "anthropic/claude-sonnet-4-5")
-          return aigateway(unified(modelID))
+          return aigateway(unified(model.api.id))
         },
         options: {},
       }
@@ -598,6 +606,7 @@ export namespace Provider {
         id: z.string(),
         url: z.string(),
         npm: z.string(),
+        shape: z.enum(["messages", "responses", "completions"]).optional(),
       }),
       name: z.string(),
       family: z.string().optional(),
@@ -686,6 +695,7 @@ export namespace Provider {
         id: model.id,
         url: model.provider?.api ?? provider.api!,
         npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
+        shape: model.provider?.shape,
       },
       status: model.status ?? "active",
       headers: model.headers ?? {},
@@ -836,6 +846,7 @@ export namespace Provider {
               existingModel?.api.npm ??
               modelsDev[providerID]?.npm ??
               "@ai-sdk/openai-compatible",
+            shape: model.provider?.shape ?? existingModel?.api.shape,
             url: model.provider?.api ?? provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api,
           },
           status: model.status ?? existingModel?.status ?? "active",
@@ -1177,7 +1188,7 @@ export namespace Provider {
 
     try {
       const language = s.modelLoaders[model.providerID]
-        ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
+        ? await s.modelLoaders[model.providerID](sdk, model, provider.options)
         : sdk.languageModel(model.api.id)
       s.models.set(key, language)
       return language
