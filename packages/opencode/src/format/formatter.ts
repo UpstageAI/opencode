@@ -1,4 +1,4 @@
-import { readableStreamToText } from "bun"
+import { text } from "node:stream/consumers"
 import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
@@ -220,7 +220,7 @@ export const rlang: Info = {
       })
       await proc.exited
       if (!proc.stdout) return false
-      const output = await readableStreamToText(proc.stdout)
+      const output = await text(proc.stdout)
 
       // Check for "Air: An R language server and formatter"
       const firstLine = output.split("\n")[0]

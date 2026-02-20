@@ -12,6 +12,7 @@ import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
 import type { Hooks } from "@opencode-ai/plugin"
 import { Process } from "../../util/process"
+import { text } from "node:stream/consumers"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -278,7 +279,7 @@ export const AuthLoginCommand = cmd({
             prompts.outro("Done")
             return
           }
-          const token = await new Response(proc.stdout).text()
+          const token = await text(proc.stdout)
           await Auth.set(args.url, {
             type: "wellknown",
             key: wellknown.auth.env,

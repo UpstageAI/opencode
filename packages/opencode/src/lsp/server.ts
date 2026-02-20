@@ -4,7 +4,8 @@ import os from "os"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { BunProc } from "../bun"
-import { $, readableStreamToText } from "bun"
+import { $ } from "bun"
+import { text } from "node:stream/consumers"
 import fs from "fs/promises"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
@@ -267,7 +268,7 @@ export namespace LSPServer {
         const proc = Process.spawn([lintBin, "--help"], { stdout: "pipe" })
         await proc.exited
         if (proc.stdout) {
-          const help = await readableStreamToText(proc.stdout)
+          const help = await text(proc.stdout)
           if (help.includes("--lsp")) {
             return {
               process: spawn(lintBin, ["--lsp"], {

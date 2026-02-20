@@ -4,7 +4,7 @@ import { Log } from "../util/log"
 import path from "path"
 import { Filesystem } from "../util/filesystem"
 import { NamedError } from "@opencode-ai/util/error"
-import { readableStreamToText } from "bun"
+import { text } from "node:stream/consumers"
 import { Lock } from "../util/lock"
 import { PackageRegistry } from "./registry"
 import { proxied } from "@/util/proxied"
@@ -29,15 +29,15 @@ export namespace BunProc {
       },
     })
     const code = await result.exited
-    const stdout = result.stdout ? await readableStreamToText(result.stdout) : undefined
-    const stderr = result.stderr ? await readableStreamToText(result.stderr) : undefined
+    const stdout = result.stdout ? await text(result.stdout) : undefined
+    const stderr = result.stderr ? await text(result.stderr) : undefined
     log.info("done", {
       code,
       stdout,
       stderr,
     })
     if (code !== 0) {
-      throw new Error(`Command failed with exit code ${result.exitCode}`)
+      throw new Error(`Command failed with exit code ${code}`)
     }
     return result
   }

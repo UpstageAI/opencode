@@ -1,4 +1,5 @@
 import { $ } from "bun"
+import { buffer } from "node:stream/consumers"
 import { Flag } from "../flag/flag"
 import { Process } from "./process"
 
@@ -28,18 +29,15 @@ export async function git(args: string[], opts: { cwd: string; env?: Record<stri
         env: opts.env ? { ...process.env, ...opts.env } : process.env,
       })
       // Read output concurrently with exit to avoid pipe buffer deadlock
-      const [exitCode, stdout, stderr] = await Promise.all([
-        proc.exited,
-        new Response(proc.stdout).arrayBuffer(),
-        new Response(proc.stderr).arrayBuffer(),
-      ])
-      const stdoutBuf = Buffer.from(stdout)
-      const stderrBuf = Buffer.from(stderr)
+      if (!proc.stdout || !proc.stderr) {
+        throw new Error("Process output not available")
+      }
+      const [exitCode, out, err] = await Promise.all([proc.exited, buffer(proc.stdout), buffer(proc.stderr)])
       return {
         exitCode,
-        text: () => stdoutBuf.toString(),
-        stdout: stdoutBuf,
-        stderr: stderrBuf,
+        text: () => out.toString(),
+        stdout: out,
+        stderr: err,
       }
     } catch (error) {
       const stderr = Buffer.from(error instanceof Error ? error.message : String(error))

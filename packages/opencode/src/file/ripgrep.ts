@@ -8,6 +8,7 @@ import { lazy } from "../util/lazy"
 import { $ } from "bun"
 import { Filesystem } from "../util/filesystem"
 import { Process } from "../util/process"
+import { text } from "node:stream/consumers"
 
 import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
 import { Log } from "@/util/log"
@@ -159,12 +160,14 @@ export namespace Ripgrep {
           stderr: "pipe",
           stdout: "pipe",
         })
-        await proc.exited
-        if (proc.exitCode !== 0)
+        const exit = await proc.exited
+        if (exit !== 0) {
+          const stderr = proc.stderr ? await text(proc.stderr) : ""
           throw new ExtractionFailedError({
             filepath,
-            stderr: proc.stderr ? await Bun.readableStreamToText(proc.stderr) : "",
+            stderr,
           })
+        }
       }
       if (config.extension === "zip") {
         const zipFileReader = new ZipReader(new BlobReader(new Blob([arrayBuffer])))
@@ -241,39 +244,30 @@ export namespace Ripgrep {
       cwd: input.cwd,
       stdout: "pipe",
       stderr: "ignore",
-      signal: input.signal,
+      abort: input.signal,
     })
 
     if (!proc.stdout) {
       throw new Error("Process output not available")
     }
 
-    const reader = proc.stdout.getReader()
-    const decoder = new TextDecoder()
     let buffer = ""
+    const stream = proc.stdout as AsyncIterable<Buffer | string>
+    for await (const chunk of stream) {
+      input.signal?.throwIfAborted()
 
-    try {
-      while (true) {
-        input.signal?.throwIfAborted()
+      buffer += typeof chunk === "string" ? chunk : chunk.toString()
+      // Handle both Unix (\n) and Windows (\r\n) line endings
+      const lines = buffer.split(/\r?\n/)
+      buffer = lines.pop() || ""
 
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        // Handle both Unix (\n) and Windows (\r\n) line endings
-        const lines = buffer.split(/\r?\n/)
-        buffer = lines.pop() || ""
-
-        for (const line of lines) {
-          if (line) yield line
-        }
+      for (const line of lines) {
+        if (line) yield line
       }
-
-      if (buffer) yield buffer
-    } finally {
-      reader.releaseLock()
-      await proc.exited
     }
+
+    if (buffer) yield buffer
+    await proc.exited
 
     input.signal?.throwIfAborted()
   }

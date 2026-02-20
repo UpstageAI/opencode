@@ -1,4 +1,5 @@
-import { readableStreamToText, semver } from "bun"
+import { semver } from "bun"
+import { text } from "node:stream/consumers"
 import { Log } from "../util/log"
 import { Process } from "../util/process"
 
@@ -21,8 +22,8 @@ export namespace PackageRegistry {
     })
 
     const code = await result.exited
-    const stdout = result.stdout ? await readableStreamToText(result.stdout) : ""
-    const stderr = result.stderr ? await readableStreamToText(result.stderr) : ""
+    const stdout = result.stdout ? await text(result.stdout) : ""
+    const stderr = result.stderr ? await text(result.stderr) : ""
 
     if (code !== 0) {
       log.warn("bun info failed", { pkg, field, code, stderr })
