@@ -197,12 +197,14 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
     const sessionIds = batch.map((s) => s.id)
 
     // Bulk fetch messages for this batch of sessions
-    const messageRows = Database.use((db) => db.select().from(MessageTable).where(inArray(MessageTable.session_id, sessionIds)).all())
-    
+    const messageRows = Database.use((db) =>
+      db.select().from(MessageTable).where(inArray(MessageTable.session_id, sessionIds)).all(),
+    )
+
     // Group messages by session_id
     const messagesBySession = new Map<string, typeof messageRows>()
     const messageIds = messageRows.map((r) => r.id)
-    
+
     for (const row of messageRows) {
       const msgs = messagesBySession.get(row.session_id) || []
       msgs.push(row)
@@ -210,13 +212,15 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
     }
 
     // Bulk fetch parts for all these messages
-    let partRows: typeof PartTable.$inferSelect[] = []
+    let partRows: (typeof PartTable.$inferSelect)[] = []
     if (messageIds.length > 0) {
       // Chunk message IDs if there are too many for a single IN clause (SQLite has limits)
       const PART_BATCH_SIZE = 500
       for (let j = 0; j < messageIds.length; j += PART_BATCH_SIZE) {
         const idBatch = messageIds.slice(j, j + PART_BATCH_SIZE)
-        const parts = Database.use((db) => db.select().from(PartTable).where(inArray(PartTable.message_id, idBatch)).all())
+        const parts = Database.use((db) =>
+          db.select().from(PartTable).where(inArray(PartTable.message_id, idBatch)).all(),
+        )
         partRows.push(...parts)
       }
     }
@@ -229,18 +233,12 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
       partsByMessage.set(row.message_id, parts)
     }
 
-    for (const session of batch) {
+    const batchResults = batch.map((session) => {
       const rawMessages = messagesBySession.get(session.id) || []
-      // Construct the MessageV2 objects locally instead of doing another N queries
-      const messages = rawMessages.map(
-        (row) =>
-          ({
-            id: row.id,
-            sessionID: row.session_id,
-            info: row.data,
-            parts: partsByMessage.get(row.id) || [],
-          }) as MessageV2.WithParts,
-      )
+      const messages = rawMessages.map((row) => ({
+        info: { ...row.data, id: row.id, sessionID: row.session_id } as MessageV2.Info,
+        parts: partsByMessage.get(row.id) || [],
+      }))
 
       let sessionCost = 0
       let sessionTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
@@ -327,8 +325,6 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
         latestTime: session.time.updated,
       }
     })
-
-    const batchResults = await Promise.all(batchPromises)
 
     for (const result of batchResults) {
       earliestTime = Math.min(earliestTime, result.earliestTime)
