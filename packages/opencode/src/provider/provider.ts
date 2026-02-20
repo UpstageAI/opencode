@@ -154,7 +154,7 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
-          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          if (model.api.shape === "completions") return sdk.chat(model.api.id)
           return sdk.responses(model.api.id)
         },
         options: {},
@@ -167,7 +167,7 @@ export namespace Provider {
           const shape = model.api.shape
           if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
           if (shape === "responses") return sdk.responses(model.api.id)
-          if (shape === "completions" || shape === "messages") return sdk.chat(model.api.id)
+          if (shape === "completions") return sdk.chat(model.api.id)
           return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
@@ -180,7 +180,7 @@ export namespace Provider {
           const shape = model.api.shape
           if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
           if (shape === "responses") return sdk.responses(model.api.id)
-          if (shape === "completions" || shape === "messages") return sdk.chat(model.api.id)
+          if (shape === "completions") return sdk.chat(model.api.id)
           return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
@@ -191,7 +191,7 @@ export namespace Provider {
         autoload: false,
         async getModel(sdk: any, model: Model, options?: Record<string, any>) {
           if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          if (model.api.shape === "completions") return sdk.chat(model.api.id)
           if (model.api.shape === "responses") return sdk.responses(model.api.id)
           if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
           return sdk.responses(model.api.id)
@@ -205,7 +205,7 @@ export namespace Provider {
         autoload: false,
         async getModel(sdk: any, model: Model, options?: Record<string, any>) {
           if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (model.api.shape === "completions" || model.api.shape === "messages") return sdk.chat(model.api.id)
+          if (model.api.shape === "completions") return sdk.chat(model.api.id)
           if (model.api.shape === "responses") return sdk.responses(model.api.id)
           if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
           return sdk.responses(model.api.id)
@@ -606,7 +606,7 @@ export namespace Provider {
         id: z.string(),
         url: z.string(),
         npm: z.string(),
-        shape: z.enum(["messages", "responses", "completions"]).optional(),
+        shape: z.enum(["responses", "completions"]).optional(),
       }),
       name: z.string(),
       family: z.string().optional(),
