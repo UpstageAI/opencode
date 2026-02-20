@@ -20,7 +20,7 @@ interface SessionStats {
       write: number
     }
   }
-  toolUsage: Record<string, number>
+  toolUsage: Record<string, { calls: number; errors: number }>
   modelUsage: Record<
     string,
     {
@@ -34,6 +34,7 @@ interface SessionStats {
         }
       }
       cost: number
+      toolUsage: Record<string, { calls: number; errors: number }>
     }
   >
   dateRange: {
@@ -62,6 +63,11 @@ export const StatsCommand = cmd({
       .option("models", {
         describe: "show model statistics (default: hidden). Pass a number to show top N, otherwise shows all",
       })
+      .option("model", {
+        describe: "filter models to show (can be used multiple times)",
+        type: "array",
+        string: true,
+      })
       .option("project", {
         describe: "filter by project (default: all projects, empty string: current project)",
         type: "string",
@@ -72,13 +78,20 @@ export const StatsCommand = cmd({
       const stats = await aggregateSessionStats(args.days, args.project)
 
       let modelLimit: number | undefined
+      let modelFilter: string[] | undefined
+
       if (args.models === true) {
         modelLimit = Infinity
       } else if (typeof args.models === "number") {
         modelLimit = args.models
       }
 
-      displayStats(stats, args.tools, modelLimit)
+      if (args.model && args.model.length > 0) {
+        modelFilter = args.model as string[]
+        modelLimit = modelLimit ?? Infinity
+      }
+
+      displayStats(stats, args.tools, modelLimit, modelFilter)
     })
   },
 })
@@ -87,13 +100,12 @@ async function getCurrentProject(): Promise<Project.Info> {
   return Instance.project
 }
 
-async function getAllSessions(): Promise<Session.Info[]> {
-  const rows = Database.use((db) => db.select().from(SessionTable).all())
-  return rows.map((row) => Session.fromRow(row))
-}
+import { inArray } from "drizzle-orm"
+import { MessageTable, PartTable } from "../../session/session.sql"
+import type { MessageV2 } from "../../session/message-v2"
+import { and, eq, gte } from "drizzle-orm"
 
 export async function aggregateSessionStats(days?: number, projectFilter?: string): Promise<SessionStats> {
-  const sessions = await getAllSessions()
   const MS_IN_DAY = 24 * 60 * 60 * 1000
 
   const cutoffTime = (() => {
@@ -112,16 +124,33 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
     return days
   })()
 
-  let filteredSessions = cutoffTime > 0 ? sessions.filter((session) => session.time.updated >= cutoffTime) : sessions
-
+  let projectID: string | undefined
   if (projectFilter !== undefined) {
     if (projectFilter === "") {
       const currentProject = await getCurrentProject()
-      filteredSessions = filteredSessions.filter((session) => session.projectID === currentProject.id)
+      projectID = currentProject.id
     } else {
-      filteredSessions = filteredSessions.filter((session) => session.projectID === projectFilter)
+      projectID = projectFilter
     }
   }
+
+  const rows = Database.use((db) => {
+    const conditions = []
+    if (cutoffTime > 0) {
+      conditions.push(gte(SessionTable.time_updated, cutoffTime))
+    }
+    if (projectID !== undefined) {
+      conditions.push(eq(SessionTable.project_id, projectID))
+    }
+
+    const baseQuery = db.select().from(SessionTable)
+    if (conditions.length > 0) {
+      return baseQuery.where(and(...conditions)).all()
+    }
+    return baseQuery.all()
+  })
+
+  const filteredSessions = rows.map((row) => Session.fromRow(row))
 
   const stats: SessionStats = {
     totalSessions: filteredSessions.length,
@@ -162,16 +191,60 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
 
   const sessionTotalTokens: number[] = []
 
-  const BATCH_SIZE = 20
+  const BATCH_SIZE = 100
   for (let i = 0; i < filteredSessions.length; i += BATCH_SIZE) {
     const batch = filteredSessions.slice(i, i + BATCH_SIZE)
+    const sessionIds = batch.map((s) => s.id)
 
-    const batchPromises = batch.map(async (session) => {
-      const messages = await Session.messages({ sessionID: session.id })
+    // Bulk fetch messages for this batch of sessions
+    const messageRows = Database.use((db) => db.select().from(MessageTable).where(inArray(MessageTable.session_id, sessionIds)).all())
+    
+    // Group messages by session_id
+    const messagesBySession = new Map<string, typeof messageRows>()
+    const messageIds = messageRows.map((r) => r.id)
+    
+    for (const row of messageRows) {
+      const msgs = messagesBySession.get(row.session_id) || []
+      msgs.push(row)
+      messagesBySession.set(row.session_id, msgs)
+    }
+
+    // Bulk fetch parts for all these messages
+    let partRows: typeof PartTable.$inferSelect[] = []
+    if (messageIds.length > 0) {
+      // Chunk message IDs if there are too many for a single IN clause (SQLite has limits)
+      const PART_BATCH_SIZE = 500
+      for (let j = 0; j < messageIds.length; j += PART_BATCH_SIZE) {
+        const idBatch = messageIds.slice(j, j + PART_BATCH_SIZE)
+        const parts = Database.use((db) => db.select().from(PartTable).where(inArray(PartTable.message_id, idBatch)).all())
+        partRows.push(...parts)
+      }
+    }
+
+    // Group parts by message_id
+    const partsByMessage = new Map<string, MessageV2.Part[]>()
+    for (const row of partRows) {
+      const parts = partsByMessage.get(row.message_id) || []
+      parts.push({ ...row.data, id: row.id, sessionID: row.session_id, messageID: row.message_id } as MessageV2.Part)
+      partsByMessage.set(row.message_id, parts)
+    }
+
+    for (const session of batch) {
+      const rawMessages = messagesBySession.get(session.id) || []
+      // Construct the MessageV2 objects locally instead of doing another N queries
+      const messages = rawMessages.map(
+        (row) =>
+          ({
+            id: row.id,
+            sessionID: row.session_id,
+            info: row.data,
+            parts: partsByMessage.get(row.id) || [],
+          }) as MessageV2.WithParts,
+      )
 
       let sessionCost = 0
       let sessionTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
-      let sessionToolUsage: Record<string, number> = {}
+      let sessionToolUsage: Record<string, { calls: number; errors: number }> = {}
       let sessionModelUsage: Record<
         string,
         {
@@ -185,6 +258,7 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
             }
           }
           cost: number
+          toolUsage: Record<string, { calls: number; errors: number }>
         }
       > = {}
 
@@ -198,6 +272,7 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
               messages: 0,
               tokens: { input: 0, output: 0, cache: { read: 0, write: 0 } },
               cost: 0,
+              toolUsage: {},
             }
           }
           sessionModelUsage[modelKey].messages++
@@ -216,11 +291,22 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
             sessionModelUsage[modelKey].tokens.cache.read += message.info.tokens.cache?.read || 0
             sessionModelUsage[modelKey].tokens.cache.write += message.info.tokens.cache?.write || 0
           }
-        }
 
-        for (const part of message.parts) {
-          if (part.type === "tool" && part.tool) {
-            sessionToolUsage[part.tool] = (sessionToolUsage[part.tool] || 0) + 1
+          for (const part of message.parts) {
+            if (part.type === "tool" && part.tool) {
+              const isError =
+                part.state && part.state.status === "error" && part.state.error !== "Tool execution aborted"
+
+              if (!sessionToolUsage[part.tool]) sessionToolUsage[part.tool] = { calls: 0, errors: 0 }
+              sessionToolUsage[part.tool].calls++
+              if (isError) sessionToolUsage[part.tool].errors++
+
+              if (!sessionModelUsage[modelKey].toolUsage[part.tool]) {
+                sessionModelUsage[modelKey].toolUsage[part.tool] = { calls: 0, errors: 0 }
+              }
+              sessionModelUsage[modelKey].toolUsage[part.tool].calls++
+              if (isError) sessionModelUsage[modelKey].toolUsage[part.tool].errors++
+            }
           }
         }
       }
@@ -258,7 +344,9 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
       stats.totalTokens.cache.write += result.sessionTokens.cache.write
 
       for (const [tool, count] of Object.entries(result.sessionToolUsage)) {
-        stats.toolUsage[tool] = (stats.toolUsage[tool] || 0) + count
+        if (!stats.toolUsage[tool]) stats.toolUsage[tool] = { calls: 0, errors: 0 }
+        stats.toolUsage[tool].calls += count.calls
+        stats.toolUsage[tool].errors += count.errors
       }
 
       for (const [model, usage] of Object.entries(result.sessionModelUsage)) {
@@ -267,6 +355,7 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
             messages: 0,
             tokens: { input: 0, output: 0, cache: { read: 0, write: 0 } },
             cost: 0,
+            toolUsage: {},
           }
         }
         stats.modelUsage[model].messages += usage.messages
@@ -275,6 +364,14 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
         stats.modelUsage[model].tokens.cache.read += usage.tokens.cache.read
         stats.modelUsage[model].tokens.cache.write += usage.tokens.cache.write
         stats.modelUsage[model].cost += usage.cost
+
+        for (const [tool, toolUsage] of Object.entries(usage.toolUsage)) {
+          if (!stats.modelUsage[model].toolUsage[tool]) {
+            stats.modelUsage[model].toolUsage[tool] = { calls: 0, errors: 0 }
+          }
+          stats.modelUsage[model].toolUsage[tool].calls += toolUsage.calls
+          stats.modelUsage[model].toolUsage[tool].errors += toolUsage.errors
+        }
       }
     }
   }
@@ -306,7 +403,7 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
   return stats
 }
 
-export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number) {
+export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number, modelFilter?: string[]) {
   const width = 56
 
   function renderRow(label: string, value: string): string {
@@ -346,43 +443,73 @@ export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit
   console.log()
 
   // Model Usage section
-  if (modelLimit !== undefined && Object.keys(stats.modelUsage).length > 0) {
-    const sortedModels = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.messages - a.messages)
-    const modelsToDisplay = modelLimit === Infinity ? sortedModels : sortedModels.slice(0, modelLimit)
+  if ((modelLimit !== undefined || modelFilter !== undefined) && Object.keys(stats.modelUsage).length > 0) {
+    let sortedModels = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.messages - a.messages)
 
-    console.log("┌────────────────────────────────────────────────────────┐")
-    console.log("│                      MODEL USAGE                       │")
-    console.log("├────────────────────────────────────────────────────────┤")
-
-    for (const [model, usage] of modelsToDisplay) {
-      console.log(`│ ${model.padEnd(54)} │`)
-      console.log(renderRow("  Messages", usage.messages.toLocaleString()))
-      console.log(renderRow("  Input Tokens", formatNumber(usage.tokens.input)))
-      console.log(renderRow("  Output Tokens", formatNumber(usage.tokens.output)))
-      console.log(renderRow("  Cache Read", formatNumber(usage.tokens.cache.read)))
-      console.log(renderRow("  Cache Write", formatNumber(usage.tokens.cache.write)))
-      console.log(renderRow("  Cost", `$${usage.cost.toFixed(4)}`))
-      console.log("├────────────────────────────────────────────────────────┤")
+    if (modelFilter && modelFilter.length > 0) {
+      sortedModels = sortedModels.filter(([model]) => modelFilter.some((filter) => model.includes(filter)))
     }
-    // Remove last separator and add bottom border
-    process.stdout.write("\x1B[1A") // Move up one line
-    console.log("└────────────────────────────────────────────────────────┘")
+
+    const modelsToDisplay =
+      modelLimit === Infinity || modelLimit === undefined ? sortedModels : sortedModels.slice(0, modelLimit)
+
+    if (modelsToDisplay.length > 0) {
+      console.log("┌────────────────────────────────────────────────────────┐")
+      console.log("│                      MODEL USAGE                       │")
+      console.log("├────────────────────────────────────────────────────────┤")
+
+      for (const [model, usage] of modelsToDisplay) {
+        console.log(`│ ${model.padEnd(54)} │`)
+        console.log(renderRow("  Messages", usage.messages.toLocaleString()))
+        console.log(renderRow("  Input Tokens", formatNumber(usage.tokens.input)))
+        console.log(renderRow("  Output Tokens", formatNumber(usage.tokens.output)))
+        console.log(renderRow("  Cache Read", formatNumber(usage.tokens.cache.read)))
+        console.log(renderRow("  Cache Write", formatNumber(usage.tokens.cache.write)))
+        console.log(renderRow("  Cost", `$${usage.cost.toFixed(4)}`))
+
+        if (Object.keys(usage.toolUsage).length > 0) {
+          console.log(`│                                                        │`)
+          console.log(`│   Tool                        Call Rate     Error Rate │`)
+
+          const totalModelTools = Object.values(usage.toolUsage).reduce((sum, t) => sum + t.calls, 0)
+          const sortedTools = Object.entries(usage.toolUsage).sort((a, b) => b[1].calls - a[1].calls)
+
+          for (const [tool, toolStats] of sortedTools) {
+            const callRate = ((toolStats.calls / totalModelTools) * 100).toFixed(1) + "%"
+            const errorRate = toolStats.calls > 0 ? ((toolStats.errors / toolStats.calls) * 100).toFixed(1) + "%" : "0%"
+
+            const toolName = tool.length > 22 ? tool.substring(0, 20) + ".." : tool
+            const paddedTool = toolName.padEnd(24)
+            const callStr = callRate.padStart(13)
+            const errStr = errorRate.padStart(15)
+
+            console.log(`│   ${paddedTool}${callStr}${errStr} │`)
+          }
+        }
+
+        console.log("├────────────────────────────────────────────────────────┤")
+      }
+      // Remove last separator and add bottom border
+      process.stdout.write("\x1B[1A") // Move up one line
+      console.log("└────────────────────────────────────────────────────────┘")
+    }
   }
   console.log()
 
   // Tool Usage section
   if (Object.keys(stats.toolUsage).length > 0) {
-    const sortedTools = Object.entries(stats.toolUsage).sort(([, a], [, b]) => b - a)
+    const sortedTools = Object.entries(stats.toolUsage).sort(([, a], [, b]) => b.calls - a.calls)
     const toolsToDisplay = toolLimit ? sortedTools.slice(0, toolLimit) : sortedTools
 
     console.log("┌────────────────────────────────────────────────────────┐")
     console.log("│                      TOOL USAGE                        │")
     console.log("├────────────────────────────────────────────────────────┤")
 
-    const maxCount = Math.max(...toolsToDisplay.map(([, count]) => count))
-    const totalToolUsage = Object.values(stats.toolUsage).reduce((a, b) => a + b, 0)
+    const maxCount = Math.max(...toolsToDisplay.map(([, toolStats]) => toolStats.calls))
+    const totalToolUsage = Object.values(stats.toolUsage).reduce((a, b) => a + b.calls, 0)
 
-    for (const [tool, count] of toolsToDisplay) {
+    for (const [tool, toolStats] of toolsToDisplay) {
+      const count = toolStats.calls
       const barLength = Math.max(1, Math.floor((count / maxCount) * 20))
       const bar = "█".repeat(barLength)
       const percentage = ((count / totalToolUsage) * 100).toFixed(1)
