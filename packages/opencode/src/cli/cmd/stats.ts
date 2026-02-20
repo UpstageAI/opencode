@@ -6,6 +6,10 @@ import { Database } from "../../storage/db"
 import { SessionTable } from "../../session/session.sql"
 import { Project } from "../../project/project"
 import { Instance } from "../../project/instance"
+import { inArray } from "drizzle-orm"
+import { MessageTable, PartTable } from "../../session/session.sql"
+import type { MessageV2 } from "../../session/message-v2"
+import { and, eq, gte } from "drizzle-orm"
 
 interface SessionStats {
   totalSessions: number
@@ -99,12 +103,6 @@ export const StatsCommand = cmd({
 async function getCurrentProject(): Promise<Project.Info> {
   return Instance.project
 }
-
-import { inArray } from "drizzle-orm"
-import { MessageTable, PartTable } from "../../session/session.sql"
-import type { MessageV2 } from "../../session/message-v2"
-import { and, eq, gte } from "drizzle-orm"
-
 export async function aggregateSessionStats(days?: number, projectFilter?: string): Promise<SessionStats> {
   const MS_IN_DAY = 24 * 60 * 60 * 1000
 
