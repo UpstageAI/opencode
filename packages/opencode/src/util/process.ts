@@ -38,13 +38,13 @@ export namespace Process {
       proc.kill()
     }
 
-    let code: number | null = null
+    const code = { value: null as number | null }
     const exited = new Promise<number>((resolve, reject) => {
       const done = () => options.signal?.removeEventListener("abort", abort)
       proc.once("exit", (exitCode, signal) => {
         done()
-        code = exitCode ?? (signal ? 1 : 0)
-        resolve(code)
+        code.value = exitCode ?? (signal ? 1 : 0)
+        resolve(code.value)
       })
       proc.once("error", (error) => {
         done()
@@ -63,7 +63,7 @@ export namespace Process {
       exited,
       kill: (signal) => proc.kill(signal),
       get exitCode() {
-        return code ?? proc.exitCode
+        return code.value ?? proc.exitCode
       },
       get pid() {
         return proc.pid
