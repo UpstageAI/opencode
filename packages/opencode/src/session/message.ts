@@ -137,7 +137,9 @@ export namespace Message {
         .object({
           time: z.object({
             created: z.number(),
+            started: z.number().optional(),
             completed: z.number().optional(),
+            streamed: z.number().optional(),
           }),
           error: z
             .discriminatedUnion("name", [AuthError.Schema, NamedError.Unknown.Schema, OutputLengthError.Schema])

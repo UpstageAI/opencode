@@ -1101,6 +1101,7 @@ export function Session() {
                     </Match>
                     <Match when={message.role === "assistant"}>
                       <AssistantMessage
+                        index={index()}
                         last={lastAssistant()?.id === message.id}
                         message={message as AssistantMessage}
                         parts={sync.data.part[message.id] ?? []}
@@ -1269,7 +1270,7 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: { index: number; message: AssistantMessage; parts: Part[]; last: boolean }) {
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
@@ -1279,12 +1280,32 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
-  const duration = createMemo(() => {
-    if (!final()) return 0
-    if (!props.message.time.completed) return 0
-    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
-    if (!user || !user.time) return 0
-    return props.message.time.completed - user.time.created
+  const stats = createMemo(() => {
+    if (!final() || !props.message.time.completed) return null
+
+    const list = messages()
+    let tokens = 0
+    let active = 0
+
+    for (let i = props.index; i >= 0; i--) {
+      const msg = list[i]
+      if (msg.role === "assistant") {
+        tokens += msg.tokens?.output || 0
+        if (msg.time.started && msg.time.streamed) {
+          const delta = msg.time.streamed - msg.time.started
+          if (delta > 0) active += delta
+        }
+      }
+      if (msg.role === "user" && msg.id === props.message.parentID) {
+        if (!msg.time?.created) return null
+        const total = props.message.time.completed - msg.time.created
+        if (total <= 0 || active <= 0) return null
+        const tps = tokens > 0 ? tokens / (active / 1000) : null
+        return { total, tps }
+      }
+    }
+
+    return null
   })
 
   return (
@@ -1334,8 +1355,14 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
               </span>{" "}
               <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
               <span style={{ fg: theme.textMuted }}> · {props.message.modelID}</span>
-              <Show when={duration()}>
-                <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
+              <Show when={stats()}>
+                {(s) => (
+                  <span style={{ fg: theme.textMuted }}>
+                    {" "}
+                    · {Locale.duration(s().total)}
+                    <Show when={s().tps !== null}> · {s().tps!.toFixed(1)} tok/s</Show>
+                  </span>
+                )}
               </Show>
               <Show when={props.message.error?.name === "MessageAbortedError"}>
                 <span style={{ fg: theme.textMuted }}> · interrupted</span>

@@ -57,6 +57,10 @@ export namespace SessionProcessor {
               switch (value.type) {
                 case "start":
                   SessionStatus.set(input.sessionID, { type: "busy" })
+                  if (!input.assistantMessage.time.started) {
+                    input.assistantMessage.time.started = Date.now()
+                    await Session.updateMessage(input.assistantMessage)
+                  }
                   break
 
                 case "reasoning-start":
@@ -337,6 +341,10 @@ export namespace SessionProcessor {
                   break
 
                 case "finish":
+                  if (!input.assistantMessage.time.streamed) {
+                    input.assistantMessage.time.streamed = Date.now()
+                    await Session.updateMessage(input.assistantMessage)
+                  }
                   break
 
                 default:

@@ -392,7 +392,9 @@ export namespace MessageV2 {
     role: z.literal("assistant"),
     time: z.object({
       created: z.number(),
+      started: z.number().optional(),
       completed: z.number().optional(),
+      streamed: z.number().optional(),
     }),
     error: z
       .discriminatedUnion("name", [
