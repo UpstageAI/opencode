@@ -1281,22 +1281,30 @@ function AssistantMessage(props: { index: number; message: AssistantMessage; par
   })
 
   const stats = createMemo(() => {
-    if (!final() || !props.message.time.completed) return null
+    // if (!final() || !props.message.time.completed) return null
 
     const list = messages()
-    let tokens = props.message.tokens?.output || 0
+    const stats = {
+      duration: 0,
+      tps: [] as number[],
+    }
 
-    for (let i = props.index - 1; i >= 0; i--) {
+    for (let i = props.index; i >= 0; i--) {
       const msg = list[i]
+
       if (msg.id === props.message.parentID && msg.role === "user") {
-        if (!msg.time?.created) return null
+        stats.duration = (props.message.time.completed ?? Date.now()) - msg.time.created
         return {
-          duration: props.message.time.completed - msg.time.created,
-          tokens,
+          duration: (props.message.time.completed ?? Date.now()) - msg.time.created,
+          tps: stats.tps.reduce((sum, x) => sum + x, 0) / stats.tps.length,
         }
       }
       if (msg.role === "assistant") {
-        tokens += msg.tokens?.output || 0
+        if (msg.tokens.output && msg.time.started && msg.time.streamed) {
+          const duration = msg.time.streamed - msg.time.started
+          const tps = msg.tokens.output / (duration / 1000)
+          stats.tps.push(tps)
+        }
       }
     }
 
@@ -1355,7 +1363,7 @@ function AssistantMessage(props: { index: number; message: AssistantMessage; par
                   <span style={{ fg: theme.textMuted }}>
                     {" "}
                     · {Locale.duration(s().duration)}
-                    <Show when={s().tokens > 0}> · {(s().tokens / (s().duration / 1000)).toFixed(1)} tok/s</Show>
+                    <Show when={s().tps > 0}> · {s().tps.toFixed(0)} tok/s</Show>
                   </span>
                 )}
               </Show>

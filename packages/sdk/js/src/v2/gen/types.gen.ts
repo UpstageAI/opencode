@@ -207,6 +207,8 @@ export type AssistantMessage = {
   role: "assistant"
   time: {
     created: number
+    started?: number
+    streamed?: number
     completed?: number
   }
   error?:
