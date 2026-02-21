@@ -344,8 +344,6 @@ export namespace SessionProcessor {
                   break
 
                 default:
-                    type: value.type,
-                  })
                   log.info("unhandled", {
                     ...value,
                   })
