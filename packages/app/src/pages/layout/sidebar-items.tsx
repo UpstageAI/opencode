@@ -127,7 +127,7 @@ const SessionRow = (props: {
         when={!props.isWorking}
         fallback={
           <div class="mt-0.5 shrink-0 size-5 flex items-center justify-center">
-            <Spinner class="size-4" />
+            <Spinner class="size-4" style={{ color: props.tint() ?? "var(--text-interactive-base)" }} />
           </div>
         }
       >
