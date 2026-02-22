@@ -2052,6 +2052,18 @@ export type McpResource = {
   client: string
 }
 
+export type GitRemote = {
+  url: string
+}
+
+export type PullRequest = {
+  number: number
+  state: string
+  headRefName: string
+  url: string
+  mergedAt: string | null
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2890,6 +2902,61 @@ export type ExperimentalResourceListResponses = {
 
 export type ExperimentalResourceListResponse =
   ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
+
+export type GitRemoteData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/experimental/git-remote"
+}
+
+export type GitRemoteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GitRemoteError = GitRemoteErrors[keyof GitRemoteErrors]
+
+export type GitRemoteResponses = {
+  /**
+   * Git remote URL
+   */
+  200: GitRemote
+}
+
+export type GitRemoteResponse = GitRemoteResponses[keyof GitRemoteResponses]
+
+export type PrListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    branches?: string
+  }
+  url: "/experimental/pr"
+}
+
+export type PrListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PrListError = PrListErrors[keyof PrListErrors]
+
+export type PrListResponses = {
+  /**
+   * Pull requests
+   */
+  200: Array<PullRequest>
+}
+
+export type PrListResponse = PrListResponses[keyof PrListResponses]
 
 export type SessionListData = {
   body?: never

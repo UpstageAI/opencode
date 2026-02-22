@@ -60,8 +60,8 @@ export function StickyAddButton(props: { children: JSX.Element }) {
   return (
     <div
       ref={button}
-      class="bg-background-base h-full shrink-0 sticky right-0 z-10 flex items-center justify-center border-b border-border-weak-base px-3"
-      classList={{ "border-l": state.stuck }}
+      class="h-full shrink-0 sticky right-0 z-10 flex items-center justify-center border-b border-border-weak-base px-3"
+      classList={{ "border-l bg-background-base": state.stuck }}
     >
       {props.children}
     </div>

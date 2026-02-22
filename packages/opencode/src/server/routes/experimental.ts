@@ -1,3 +1,4 @@
+import { $ } from "bun"
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
@@ -9,6 +10,16 @@ import { MCP } from "../../mcp"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+
+const PullRequest = z
+  .object({
+    number: z.number(),
+    state: z.string(),
+    headRefName: z.string(),
+    url: z.string(),
+    mergedAt: z.string().nullable(),
+  })
+  .meta({ ref: "PullRequest" })
 
 export const ExperimentalRoutes = lazy(() =>
   new Hono()
@@ -203,6 +214,84 @@ export const ExperimentalRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json(await MCP.resources())
+      },
+    )
+    .get(
+      "/git-remote",
+      describeRoute({
+        summary: "Get git remote URL",
+        description: "Get the origin remote URL for the current project.",
+        operationId: "git.remote",
+        responses: {
+          200: {
+            description: "Git remote URL",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ url: z.string() }).meta({ ref: "GitRemote" })),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      async (c) => {
+        const result = await $`git remote get-url origin`.quiet().nothrow().cwd(Instance.worktree)
+        if (result.exitCode !== 0) return c.json({ url: "" })
+        const raw = new TextDecoder().decode(result.stdout).trim()
+        // normalize git@github.com:org/repo.git → org/repo
+        const cleaned = raw
+          .replace(/\.git$/, "")
+          .replace(/^git@github\.com:/, "")
+          .replace(/^https?:\/\/github\.com\//, "")
+        return c.json({ url: cleaned })
+      },
+    )
+    .get(
+      "/pr",
+      describeRoute({
+        summary: "List pull requests",
+        description: "List pull requests for specific branches via gh CLI.",
+        operationId: "pr.list",
+        responses: {
+          200: {
+            description: "Pull requests",
+            content: {
+              "application/json": {
+                schema: resolver(z.array(PullRequest)),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          branches: z.string().optional(),
+          directory: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const { branches, directory } = c.req.valid("query")
+        if (!branches) return c.json([])
+        const names = branches.split(",").filter(Boolean)
+        if (!names.length) return c.json([])
+        const cwd = directory || Instance.worktree
+        const results = await Promise.all(
+          names.map(async (branch) => {
+            const result =
+              await $`gh pr list --head ${branch} --json number,state,headRefName,url,mergedAt --state all --limit 1`
+                .quiet()
+                .nothrow()
+                .cwd(cwd)
+            if (result.exitCode !== 0) return []
+            const text = new TextDecoder().decode(result.stdout).trim()
+            if (!text) return []
+            const parsed = z.array(PullRequest).safeParse(JSON.parse(text))
+            return parsed.success ? parsed.data : []
+          }),
+        )
+        return c.json(results.flat())
       },
     ),
 )

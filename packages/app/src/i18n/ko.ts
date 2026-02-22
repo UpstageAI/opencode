@@ -445,6 +445,9 @@ export const dict = {
   "session.review.loadingChanges": "변경 사항 로드 중...",
   "session.review.empty": "이 세션에 변경 사항이 아직 없습니다",
   "session.review.noChanges": "변경 없음",
+  "session.stage.inProgress": "진행 중",
+  "session.stage.inReview": "검토 중",
+  "session.stage.done": "완료",
   "session.files.selectToOpen": "열 파일을 선택하세요",
   "session.files.all": "모든 파일",
   "session.files.binaryContent": "바이너리 파일 (내용을 표시할 수 없음)",
@@ -714,6 +717,9 @@ export const dict = {
   "workspace.reset.success.title": "작업 공간 재설정됨",
   "workspace.reset.success.description": "작업 공간이 이제 기본 브랜치와 일치합니다.",
   "workspace.error.stillPreparing": "작업 공간이 아직 준비 중입니다",
+  "workspace.stage.preparing": "준비 중",
+  "workspace.stage.ready": "준비 완료",
+  "workspace.stage.failed": "실패",
   "workspace.status.checking": "병합되지 않은 변경 사항 확인 중...",
   "workspace.status.error": "Git 상태를 확인할 수 없습니다.",
   "workspace.status.clean": "병합되지 않은 변경 사항이 감지되지 않았습니다.",
@@ -728,4 +734,13 @@ export const dict = {
   "workspace.reset.archived.one": "1개의 세션이 보관됩니다.",
   "workspace.reset.archived.many": "{{count}}개의 세션이 보관됩니다.",
   "workspace.reset.note": "이 작업은 작업 공간을 기본 브랜치와 일치하도록 재설정합니다.",
+
+  "session.archive.title": "세션 보관",
+  "session.archive.confirm": "이 세션을 보관하시겠습니까?",
+  "session.archive.description": "세션이 완료 상태로 이동합니다.",
+  "session.archive.button": "보관",
+
+  "session.continue.title": "새 브랜치에서 계속",
+  "session.continue.description": "이 세션을 보관하고 동일한 컨텍스트로 새 브랜치에서 계속합니다.",
+  "session.continue.button": "새 브랜치에서 계속",
 }

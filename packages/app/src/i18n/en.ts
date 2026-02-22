@@ -496,6 +496,9 @@ export const dict = {
   "session.review.loadingChanges": "Loading changes...",
   "session.review.empty": "No changes in this session yet",
   "session.review.noChanges": "No changes",
+  "session.stage.inProgress": "In progress",
+  "session.stage.inReview": "In review",
+  "session.stage.done": "Done",
 
   "session.files.selectToOpen": "Select a file to open",
   "session.files.all": "All files",
@@ -795,6 +798,9 @@ export const dict = {
   "workspace.reset.success.title": "Workspace reset",
   "workspace.reset.success.description": "Workspace now matches the default branch.",
   "workspace.error.stillPreparing": "Workspace is still preparing",
+  "workspace.stage.preparing": "Preparing",
+  "workspace.stage.ready": "Ready",
+  "workspace.stage.failed": "Failed",
   "workspace.status.checking": "Checking for unmerged changes...",
   "workspace.status.error": "Unable to verify git status.",
   "workspace.status.clean": "No unmerged changes detected.",
@@ -809,4 +815,13 @@ export const dict = {
   "workspace.reset.archived.one": "1 session will be archived.",
   "workspace.reset.archived.many": "{{count}} sessions will be archived.",
   "workspace.reset.note": "This will reset the workspace to match the default branch.",
+
+  "session.archive.title": "Archive session",
+  "session.archive.confirm": "Archive this session?",
+  "session.archive.description": "The session will be moved to Done.",
+  "session.archive.button": "Archive",
+
+  "session.continue.title": "Continue on new branch",
+  "session.continue.description": "Archive this session and continue on a new branch with the same context.",
+  "session.continue.button": "Continue on new branch",
 }
