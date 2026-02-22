@@ -729,8 +729,16 @@ export default function Page() {
       ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
       : store.mobileTab === "changes"
     if (!wants) return
-    if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
+
+    const cached = sync.data.session_diff[id]
+    if (cached !== undefined && cached.length > 0) return
+    // Also allow refetch when cache is empty but summary says files changed
+    // (covers missed SSE events after fork or reconnection)
+    if (cached !== undefined) {
+      const session = sync.session.get(id)
+      if ((session?.summary?.files ?? 0) === 0) return
+    }
 
     void sync.session.diff(id)
   })
