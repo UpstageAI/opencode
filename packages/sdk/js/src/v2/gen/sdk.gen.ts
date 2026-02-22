@@ -34,6 +34,8 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
+  GitRemoteErrors,
+  GitRemoteResponses,
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
@@ -70,6 +72,8 @@ import type {
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
+  PrListErrors,
+  PrListResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -923,6 +927,59 @@ export class Experimental extends HeyApiClient {
   private _resource?: Resource
   get resource(): Resource {
     return (this._resource ??= new Resource({ client: this.client }))
+  }
+}
+
+export class Git extends HeyApiClient {
+  /**
+   * Get git remote URL
+   *
+   * Get the origin remote URL for the current project.
+   */
+  public remote<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<GitRemoteResponses, GitRemoteErrors, ThrowOnError>({
+      url: "/experimental/git-remote",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Pr extends HeyApiClient {
+  /**
+   * List pull requests
+   *
+   * List pull requests for specific branches via gh CLI.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      branches?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "branches" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PrListResponses, PrListErrors, ThrowOnError>({
+      url: "/experimental/pr",
+      ...options,
+      ...params,
+    })
   }
 }
 
@@ -3229,6 +3286,16 @@ export class OpencodeClient extends HeyApiClient {
   private _experimental?: Experimental
   get experimental(): Experimental {
     return (this._experimental ??= new Experimental({ client: this.client }))
+  }
+
+  private _git?: Git
+  get git(): Git {
+    return (this._git ??= new Git({ client: this.client }))
+  }
+
+  private _pr?: Pr
+  get pr(): Pr {
+    return (this._pr ??= new Pr({ client: this.client }))
   }
 
   private _session?: Session

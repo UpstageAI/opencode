@@ -13,6 +13,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -82,6 +83,7 @@ export function MessageTimeline(props: {
   const sync = useSync()
   const dialog = useDialog()
   const language = useLanguage()
+  const command = useCommand()
 
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sessionID = createMemo(() => params.id)
@@ -468,6 +470,11 @@ export function MessageTimeline(props: {
                             <DropdownMenu.Item onSelect={() => void archiveSession(id())}>
                               <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
                             </DropdownMenu.Item>
+                            <Show when={!command.options.find((o) => o.id === "session.continue")?.disabled}>
+                              <DropdownMenu.Item onSelect={() => command.trigger("session.continue")}>
+                                <DropdownMenu.ItemLabel>{language.t("session.continue.title")}</DropdownMenu.ItemLabel>
+                              </DropdownMenu.Item>
+                            </Show>
                             <DropdownMenu.Separator />
                             <DropdownMenu.Item
                               onSelect={() => dialog.show(() => <DialogDeleteSession sessionID={id()} />)}

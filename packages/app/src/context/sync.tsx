@@ -276,7 +276,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const directory = sdk.directory
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
-          if (store.session_diff[sessionID] !== undefined) return
+          const cached = store.session_diff[sessionID]
+          if (cached !== undefined) {
+            if (cached.length > 0) return
+            // Empty cache might be stale if summary says there are file changes
+            // (session.diff SSE event can be missed during fork or reconnection)
+            const match = Binary.search(store.session, sessionID, (s) => s.id)
+            if (!match.found || (store.session[match.index]?.summary?.files ?? 0) === 0) return
+          }
 
           const key = keyFor(directory, sessionID)
           return runInflight(inflightDiff, key, () =>

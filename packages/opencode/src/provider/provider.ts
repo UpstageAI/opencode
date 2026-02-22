@@ -976,6 +976,11 @@ export namespace Provider {
       }
     }
 
+    const claudeCode = await (await import("./claude-code")).ClaudeCode.provider()
+    if (claudeCode && isProviderAllowed("claude-code")) {
+      providers["claude-code"] = claudeCode
+    }
+
     // load config
     for (const [providerID, provider] of configProviders) {
       const partial: Partial<Info> = { source: "config" }

@@ -173,7 +173,13 @@ export function DialogConnectProvider(props: { provider: string }) {
     listRef?.onKeyDown(e)
   }
 
+  const connected = createMemo(() => new Set(globalSync.data.provider.connected))
+
   onMount(() => {
+    if (connected().has(props.provider)) {
+      void complete()
+      return
+    }
     if (methods().length === 1) {
       selectMethod(0)
     }

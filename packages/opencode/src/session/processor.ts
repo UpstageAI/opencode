@@ -44,6 +44,18 @@ export namespace SessionProcessor {
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
+        const { ClaudeCode } = await import("@/provider/claude-code")
+        if (ClaudeCode.enabled(input.model)) {
+          return ClaudeCode.process({
+            sessionID: input.assistantMessage.sessionID,
+            assistantMessage: input.assistantMessage,
+            model: input.model,
+            abort: input.abort,
+            system: streamInput.system,
+            messages: streamInput.messages,
+            tools: streamInput.tools,
+          })
+        }
         needsCompaction = false
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
         while (true) {
@@ -59,7 +71,7 @@ export namespace SessionProcessor {
                   SessionStatus.set(input.sessionID, { type: "busy" })
                   break
 
-                case "reasoning-start":
+                case "reasoning-start": {
                   if (value.id in reasoningMap) {
                     continue
                   }
@@ -77,6 +89,7 @@ export namespace SessionProcessor {
                   reasoningMap[value.id] = reasoningPart
                   await Session.updatePart(reasoningPart)
                   break
+                }
 
                 case "reasoning-delta":
                   if (value.id in reasoningMap) {
@@ -108,7 +121,7 @@ export namespace SessionProcessor {
                   }
                   break
 
-                case "tool-input-start":
+                case "tool-input-start": {
                   const part = await Session.updatePart({
                     id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -124,6 +137,7 @@ export namespace SessionProcessor {
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
                   break
+                }
 
                 case "tool-input-delta":
                   break
@@ -241,7 +255,7 @@ export namespace SessionProcessor {
                   })
                   break
 
-                case "finish-step":
+                case "finish-step": {
                   const usage = Session.getUsage({
                     model: input.model,
                     usage: value.usage,
@@ -283,6 +297,7 @@ export namespace SessionProcessor {
                     needsCompaction = true
                   }
                   break
+                }
 
                 case "text-start":
                   currentText = {

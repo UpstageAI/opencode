@@ -7,6 +7,7 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Mark } from "@opencode-ai/ui/logo"
+import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
@@ -26,6 +27,8 @@ import { FileTabContent } from "@/pages/session/file-tabs"
 import { createOpenSessionFileTab, getTabReorderIndex } from "@/pages/session/helpers"
 import { StickyAddButton } from "@/pages/session/review-tab"
 import { setSessionHandoff } from "@/pages/session/handoff"
+
+type SessionStage = "in_progress" | "in_review" | "done"
 
 export function SessionSidePanel(props: {
   reviewPanel: () => JSX.Element
@@ -58,6 +61,65 @@ export function SessionSidePanel(props: {
     if (!id) return true
     if (!hasReview()) return true
     return sync.data.session_diff[id] !== undefined
+  })
+  const summary = createMemo(() => {
+    const base = info()?.summary
+    if (base) {
+      return {
+        files: Math.max(base.files ?? 0, diffs().length),
+        additions: base.additions ?? 0,
+        deletions: base.deletions ?? 0,
+      }
+    }
+
+    const totals = diffs().reduce(
+      (acc, diff) => ({
+        additions: acc.additions + (diff.additions ?? 0),
+        deletions: acc.deletions + (diff.deletions ?? 0),
+      }),
+      { additions: 0, deletions: 0 },
+    )
+
+    return {
+      files: diffs().length,
+      additions: totals.additions,
+      deletions: totals.deletions,
+    }
+  })
+  const pendingPermission = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return (sync.data.permission[id] ?? []).length > 0
+  })
+  const pendingQuestion = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return (sync.data.question[id] ?? []).length > 0
+  })
+  const working = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    const status = sync.data.session_status[id]
+    return status?.type === "busy" || status?.type === "retry"
+  })
+  const stage = createMemo<SessionStage>(() => {
+    if (working() || pendingPermission() || pendingQuestion()) return "in_progress"
+    if ((info()?.time.archived ?? 0) > 0) return "done"
+    if (hasReview()) return "in_review"
+    return "done"
+  })
+  const stageLabel = createMemo(() => {
+    const value = stage()
+    if (value === "in_progress") {
+      const label = language.t("session.stage.inProgress")
+      return label && label !== "session.stage.inProgress" ? label : "In progress"
+    }
+    if (value === "in_review") {
+      const label = language.t("session.stage.inReview")
+      return label && label !== "session.stage.inReview" ? label : "In review"
+    }
+    const label = language.t("session.stage.done")
+    return label && label !== "session.stage.done" ? label : "Done"
   })
 
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
@@ -147,6 +209,19 @@ export function SessionSidePanel(props: {
     activeDraggable: undefined as string | undefined,
   })
 
+  const ReviewReadiness = () => (
+    <div class="shrink-0 border-b border-border-weak-base px-4 py-2 flex items-center justify-between gap-2 bg-background-base">
+      <Show when={hasReview()}>
+        <span class="text-11-regular text-text-weak truncate">
+          {language.t("session.review.filesChanged", { count: summary().files })}
+        </span>
+      </Show>
+      <Show when={hasReview()}>
+        <DiffChanges changes={{ additions: summary().additions, deletions: summary().deletions }} />
+      </Show>
+    </div>
+  )
+
   const handleDragStart = (event: unknown) => {
     const id = getDraggableId(event)
     if (!id) return
@@ -202,6 +277,7 @@ export function SessionSidePanel(props: {
       >
         <Show when={reviewOpen()}>
           <div class="flex-1 min-w-0 h-full">
+            <ReviewReadiness />
             <Show
               when={layout.fileTree.opened() && fileTreeTab() === "changes"}
               fallback={
@@ -216,6 +292,7 @@ export function SessionSidePanel(props: {
                   <Tabs value={activeTab()} onChange={openTab}>
                     <div class="sticky top-0 shrink-0 flex">
                       <Tabs.List
+                        class="[&::after]:bg-transparent"
                         ref={(el: HTMLDivElement) => {
                           const stop = createFileTabListSync({ el, contextOpen })
                           onCleanup(stop)
@@ -338,6 +415,9 @@ export function SessionSidePanel(props: {
               class="h-full flex flex-col overflow-hidden group/filetree"
               classList={{ "border-l border-border-weak-base": reviewOpen() }}
             >
+              <Show when={!reviewOpen()}>
+                <ReviewReadiness />
+              </Show>
               <Tabs
                 variant="pill"
                 value={fileTreeTab()}

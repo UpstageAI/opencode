@@ -5,7 +5,6 @@ import { useLayout, type LocalProject, getAvatarColors } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { Avatar } from "@opencode-ai/ui/avatar"
-import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { HoverCard } from "@opencode-ai/ui/hover-card"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -14,8 +13,9 @@ import { Spinner } from "@opencode-ai/ui/spinner"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { getFilename } from "@opencode-ai/util/path"
 import { type Message, type Session, type TextPart, type UserMessage } from "@opencode-ai/sdk/v2/client"
-import { For, Match, Show, Switch, createMemo, onCleanup, type Accessor, type JSX } from "solid-js"
+import { For, Show, createMemo, onCleanup, type Accessor, type JSX } from "solid-js"
 import { agentColor } from "@/utils/agent"
+import { DateTime } from "luxon"
 
 const OPENCODE_PROJECT_ID = "4b0ea68d7af9a6031a7ffda7ad66e0cb83315750"
 
@@ -56,6 +56,10 @@ export const ProjectIcon = (props: { project: LocalProject; class?: string; noti
 export type SessionItemProps = {
   session: Session
   slug: string
+  branch?: string
+  prNumber?: number
+  isWorking?: boolean
+  shortcutIndex?: number
   mobile?: boolean
   dense?: boolean
   popover?: boolean
@@ -70,70 +74,113 @@ export type SessionItemProps = {
   archiveSession: (session: Session) => Promise<void>
 }
 
+type SessionStage = "in_progress" | "in_review" | "done" | "backlog" | "cancelled"
+
 const SessionRow = (props: {
   session: Session
   slug: string
+  branch?: string
+  prNumber?: number
+  isWorking?: boolean
+  provider: Accessor<string | undefined>
+  shortcutIndex?: number
   mobile?: boolean
   dense?: boolean
   tint: Accessor<string | undefined>
-  isWorking: Accessor<boolean>
-  hasPermissions: Accessor<boolean>
-  hasError: Accessor<boolean>
-  unseenCount: Accessor<number>
+  updated: Accessor<string | undefined>
   setHoverSession: (id: string | undefined) => void
   clearHoverProjectSoon: () => void
   sidebarOpened: Accessor<boolean>
   prefetchSession: (session: Session, priority?: "high" | "low") => void
   scheduleHoverPrefetch: () => void
   cancelHoverPrefetch: () => void
-}): JSX.Element => (
-  <A
-    href={`/${props.slug}/session/${props.session.id}`}
-    class={`flex items-center justify-between gap-3 min-w-0 text-left w-full focus:outline-none transition-[padding] ${props.mobile ? "pr-7" : ""} group-hover/session:pr-7 group-focus-within/session:pr-7 group-active/session:pr-7 ${props.dense ? "py-0.5" : "py-1"}`}
-    onPointerEnter={props.scheduleHoverPrefetch}
-    onPointerLeave={props.cancelHoverPrefetch}
-    onMouseEnter={props.scheduleHoverPrefetch}
-    onMouseLeave={props.cancelHoverPrefetch}
-    onFocus={() => props.prefetchSession(props.session, "high")}
-    onClick={() => {
-      props.setHoverSession(undefined)
-      if (props.sidebarOpened()) return
-      props.clearHoverProjectSoon()
-    }}
-  >
-    <div class="flex items-center gap-1 w-full">
-      <div
-        class="shrink-0 size-6 flex items-center justify-center"
-        style={{ color: props.tint() ?? "var(--icon-interactive-base)" }}
-      >
-        <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
-          <Match when={props.isWorking()}>
-            <Spinner class="size-[15px]" />
-          </Match>
-          <Match when={props.hasPermissions()}>
-            <div class="size-1.5 rounded-full bg-surface-warning-strong" />
-          </Match>
-          <Match when={props.hasError()}>
-            <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
-          </Match>
-          <Match when={props.unseenCount() > 0}>
-            <div class="size-1.5 rounded-full bg-text-interactive-base" />
-          </Match>
-        </Switch>
-      </div>
-      <span class="text-14-regular text-text-strong grow-1 min-w-0 overflow-hidden text-ellipsis truncate">
-        {props.session.title}
-      </span>
-      <Show when={props.session.summary}>
-        {(summary) => (
-          <div class="group-hover/session:hidden group-active/session:hidden group-focus-within/session:hidden">
-            <DiffChanges changes={summary()} />
+}): JSX.Element => {
+  const additions = createMemo(() => props.session.summary?.additions ?? 0)
+  const deletions = createMemo(() => props.session.summary?.deletions ?? 0)
+  const avatarLabel = createMemo(() => {
+    const value = props.provider()?.trim()
+    if (!value) return "O"
+    return value[0]?.toUpperCase() ?? "O"
+  })
+  const shortcut = createMemo(() => {
+    if (!props.shortcutIndex) return undefined
+    if (props.shortcutIndex < 1 || props.shortcutIndex > 9) return undefined
+    return `⌘${props.shortcutIndex}`
+  })
+
+  return (
+    <A
+      href={`/${props.slug}/session/${props.session.id}`}
+      class={`flex items-start gap-2 min-w-0 text-left w-full focus:outline-none transition-[padding] ${props.mobile ? "pr-7" : ""} group-hover/session:pr-7 group-focus-within/session:pr-7 group-active/session:pr-7 ${props.dense ? "py-0.5" : "py-1"}`}
+      onPointerEnter={props.scheduleHoverPrefetch}
+      onPointerLeave={props.cancelHoverPrefetch}
+      onMouseEnter={props.scheduleHoverPrefetch}
+      onMouseLeave={props.cancelHoverPrefetch}
+      onFocus={() => props.prefetchSession(props.session, "high")}
+      onClick={() => {
+        props.setHoverSession(undefined)
+        if (props.sidebarOpened()) return
+        props.clearHoverProjectSoon()
+      }}
+    >
+      <Show
+        when={!props.isWorking}
+        fallback={
+          <div class="mt-0.5 shrink-0 size-5 flex items-center justify-center">
+            <Spinner class="size-4" style={{ color: props.tint() ?? "var(--text-interactive-base)" }} />
           </div>
-        )}
+        }
+      >
+        <div
+          class="mt-0.5 shrink-0 size-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
+          style={{ "background-color": props.tint() ?? "var(--text-interactive-base)" }}
+        >
+          {avatarLabel()}
+        </div>
       </Show>
-    </div>
-  </A>
-)
+      <div class="min-w-0 flex-1 flex flex-col gap-0.5">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-13-regular text-text-strong grow min-w-0 truncate">{props.session.title}</span>
+          <Show when={additions() > 0 || deletions() > 0}>
+            <div class="shrink-0 flex items-center gap-1 text-12-regular">
+              <Show when={additions() > 0}>{(value) => <span class="text-text-diff-add-base">+{value()}</span>}</Show>
+              <Show when={deletions() > 0}>
+                {(value) => <span class="text-text-diff-delete-base">-{value()}</span>}
+              </Show>
+            </div>
+          </Show>
+        </div>
+        <Show when={props.branch}>
+          {(value) => <span class="text-12-regular text-text-weak truncate">{value()}</span>}
+        </Show>
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="min-w-0 flex items-center gap-1 text-12-regular text-text-weak">
+            <Show when={props.provider()}>{(value) => <span class="truncate">{value()}</span>}</Show>
+            <Show when={props.prNumber}>
+              {(value) => (
+                <>
+                  <span class="text-text-weaker">·</span>
+                  <span class="shrink-0">PR #{value()}</span>
+                </>
+              )}
+            </Show>
+            <Show when={props.updated()}>
+              {(value) => (
+                <>
+                  <span class="text-text-weaker">·</span>
+                  <span class="shrink-0">{value()}</span>
+                </>
+              )}
+            </Show>
+          </div>
+          <Show when={shortcut()}>
+            {(value) => <span class="ml-auto shrink-0 text-12-regular text-text-weaker">{value()}</span>}
+          </Show>
+        </div>
+      </div>
+    </A>
+  )
+}
 
 const SessionHoverPreview = (props: {
   mobile?: boolean
@@ -185,25 +232,15 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   const navigate = useNavigate()
   const layout = useLayout()
   const language = useLanguage()
-  const notification = useNotification()
   const globalSync = useGlobalSync()
-  const unseenCount = createMemo(() => notification.session.unseenCount(props.session.id))
-  const hasError = createMemo(() => notification.session.unseenHasError(props.session.id))
   const [sessionStore] = globalSync.child(props.session.directory)
-  const hasPermissions = createMemo(() => {
-    const permissions = sessionStore.permission?.[props.session.id] ?? []
-    if (permissions.length > 0) return true
-
-    for (const id of props.children.get(props.session.id) ?? []) {
-      const childPermissions = sessionStore.permission?.[id] ?? []
-      if (childPermissions.length > 0) return true
-    }
-    return false
+  const stage = createMemo<SessionStage>(() => {
+    if (props.session.time.archived !== undefined) return "done"
+    return "in_progress"
   })
-  const isWorking = createMemo(() => {
-    if (hasPermissions()) return false
-    const status = sessionStore.session_status[props.session.id]
-    return status?.type === "busy" || status?.type === "retry"
+  const updated = createMemo(() => {
+    const at = props.session.time.updated ?? props.session.time.created
+    return DateTime.fromMillis(at).toRelative({ style: "short" }) ?? undefined
   })
 
   const tint = createMemo(() => {
@@ -220,6 +257,18 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
 
     const agent = sessionStore.agent.find((a) => a.name === user.agent)
     return agentColor(user.agent, agent?.color)
+  })
+  const provider = createMemo(() => {
+    const messages = sessionStore.message[props.session.id]
+    if (!messages) return undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      if (message.role !== "assistant") continue
+      if ("providerID" in message && typeof message.providerID === "string" && message.providerID.length > 0)
+        return message.providerID
+      if (message.agent) return message.agent
+    }
+    return undefined
   })
 
   const hoverMessages = createMemo(() =>
@@ -255,13 +304,15 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
     <SessionRow
       session={props.session}
       slug={props.slug}
+      branch={props.branch}
+      prNumber={props.prNumber}
+      isWorking={props.isWorking}
+      provider={provider}
+      shortcutIndex={props.shortcutIndex}
       mobile={props.mobile}
       dense={props.dense}
       tint={tint}
-      isWorking={isWorking}
-      hasPermissions={hasPermissions}
-      hasError={hasError}
-      unseenCount={unseenCount}
+      updated={updated}
       setHoverSession={props.setHoverSession}
       clearHoverProjectSoon={props.clearHoverProjectSoon}
       sidebarOpened={layout.sidebar.opened}
@@ -274,6 +325,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   return (
     <div
       data-session-id={props.session.id}
+      data-stage={stage()}
       class="group/session relative w-full rounded-md cursor-default transition-colors pl-2 pr-3
              hover:bg-surface-raised-base-hover [&:has(:focus-visible)]:bg-surface-raised-base-hover has-[[data-expanded]]:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active"
     >

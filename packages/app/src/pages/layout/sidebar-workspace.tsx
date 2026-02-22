@@ -16,8 +16,15 @@ import { type Session } from "@opencode-ai/sdk/v2/client"
 import { type LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { Worktree as WorktreeState } from "@/utils/worktree"
 import { NewSessionItem, SessionItem, SessionSkeleton } from "./sidebar-items"
 import { childMapByParent, sortedRootSessions } from "./helpers"
+
+type SessionStats = {
+  in_progress: number
+  in_review: number
+  done: number
+}
 
 type InlineEditorComponent = (props: {
   id: string
@@ -86,6 +93,8 @@ const WorkspaceHeader = (props: {
   local: Accessor<boolean>
   busy: Accessor<boolean>
   open: Accessor<boolean>
+  stage: Accessor<"pending" | "ready" | "failed" | undefined>
+  stageMessage: Accessor<string | undefined>
   directory: string
   language: ReturnType<typeof useLanguage>
   branch: Accessor<string | undefined>
@@ -95,45 +104,78 @@ const WorkspaceHeader = (props: {
   renameWorkspace: WorkspaceSidebarContext["renameWorkspace"]
   setEditor: WorkspaceSidebarContext["setEditor"]
   projectId?: string
-}): JSX.Element => (
-  <div class="flex items-center gap-1 min-w-0 flex-1">
-    <div class="flex items-center justify-center shrink-0 size-6">
-      <Show when={props.busy()} fallback={<Icon name="branch" size="small" />}>
-        <Spinner class="size-[15px]" />
+}): JSX.Element => {
+  const stageLabel = () => {
+    const value = props.stage()
+    if (!value) return
+    if (value === "pending") {
+      const label = props.language.t("workspace.stage.preparing")
+      return label && label !== "workspace.stage.preparing" ? label : "Preparing"
+    }
+    if (value === "ready") {
+      const label = props.language.t("workspace.stage.ready")
+      return label && label !== "workspace.stage.ready" ? label : "Ready"
+    }
+    const label = props.language.t("workspace.stage.failed")
+    return label && label !== "workspace.stage.failed" ? label : "Failed"
+  }
+
+  return (
+    <div class="flex items-center gap-1 min-w-0 flex-1">
+      <div class="flex items-center justify-center shrink-0 size-6">
+        <Show when={props.busy()} fallback={<Icon name="branch" size="small" />}>
+          <Spinner class="size-[15px]" />
+        </Show>
+      </div>
+      <span class="text-14-medium text-text-base shrink-0">
+        {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")} :
+      </span>
+      <Show
+        when={!props.local()}
+        fallback={
+          <span class="text-14-medium text-text-base min-w-0 truncate">
+            {props.branch() ?? getFilename(props.directory)}
+          </span>
+        }
+      >
+        <props.InlineEditor
+          id={`workspace:${props.directory}`}
+          value={props.workspaceValue}
+          onSave={(next) => {
+            const trimmed = next.trim()
+            if (!trimmed) return
+            props.renameWorkspace(props.directory, trimmed, props.projectId, props.branch())
+            props.setEditor("value", props.workspaceValue())
+          }}
+          class="text-14-medium text-text-base min-w-0 truncate"
+          displayClass="text-14-medium text-text-base min-w-0 truncate"
+          editing={props.workspaceEditActive()}
+          stopPropagation={false}
+          openOnDblClick={false}
+        />
       </Show>
+      <Show when={stageLabel()}>
+        {(value) => (
+          <span
+            title={props.stage() === "failed" ? props.stageMessage() : undefined}
+            class="shrink-0 rounded-full border px-1.5 py-0.5 text-11-regular leading-none"
+            classList={{
+              "bg-surface-warning-weak border-border-warning-base text-text-strong": props.stage() === "pending",
+              "bg-surface-base border-border-weak-base text-icon-success-base": props.stage() === "ready",
+              "bg-surface-critical-weak border-border-critical-base text-icon-critical-base":
+                props.stage() === "failed",
+            }}
+          >
+            {value()}
+          </span>
+        )}
+      </Show>
+      <div class="flex items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
+        <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="text-icon-base" />
+      </div>
     </div>
-    <span class="text-14-medium text-text-base shrink-0">
-      {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")} :
-    </span>
-    <Show
-      when={!props.local()}
-      fallback={
-        <span class="text-14-medium text-text-base min-w-0 truncate">
-          {props.branch() ?? getFilename(props.directory)}
-        </span>
-      }
-    >
-      <props.InlineEditor
-        id={`workspace:${props.directory}`}
-        value={props.workspaceValue}
-        onSave={(next) => {
-          const trimmed = next.trim()
-          if (!trimmed) return
-          props.renameWorkspace(props.directory, trimmed, props.projectId, props.branch())
-          props.setEditor("value", props.workspaceValue())
-        }}
-        class="text-14-medium text-text-base min-w-0 truncate"
-        displayClass="text-14-medium text-text-base min-w-0 truncate"
-        editing={props.workspaceEditActive()}
-        stopPropagation={false}
-        openOnDblClick={false}
-      />
-    </Show>
-    <div class="flex items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
-      <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="text-icon-base" />
-    </div>
-  </div>
-)
+  )
+}
 
 const WorkspaceActions = (props: {
   directory: string
@@ -237,6 +279,40 @@ const WorkspaceActions = (props: {
   </div>
 )
 
+const SessionStageSummary = (props: {
+  stats: Accessor<SessionStats>
+  language: ReturnType<typeof useLanguage>
+}): JSX.Element => {
+  const labels = createMemo(() => {
+    const inProgress = props.language.t("session.stage.inProgress")
+    const inReview = props.language.t("session.stage.inReview")
+    const done = props.language.t("session.stage.done")
+    return {
+      inProgress: inProgress && inProgress !== "session.stage.inProgress" ? inProgress : "In progress",
+      inReview: inReview && inReview !== "session.stage.inReview" ? inReview : "In review",
+      done: done && done !== "session.stage.done" ? done : "Done",
+    }
+  })
+
+  const total = createMemo(() => props.stats().in_progress + props.stats().in_review + props.stats().done)
+
+  return (
+    <Show when={total() > 0}>
+      <div class="pl-9 pr-2 pb-1 flex items-center gap-1.5 text-11-regular text-text-weaker">
+        <span class="rounded-full border border-border-warning-base bg-surface-warning-weak px-1.5 py-0.5 text-text-strong">
+          {labels().inProgress} {props.stats().in_progress}
+        </span>
+        <span class="rounded-full border border-border-info-base bg-surface-info-weak px-1.5 py-0.5 text-text-strong">
+          {labels().inReview} {props.stats().in_review}
+        </span>
+        <span class="rounded-full border border-border-weak-base bg-surface-base px-1.5 py-0.5 text-text-weak">
+          {labels().done} {props.stats().done}
+        </span>
+      </div>
+    </Show>
+  )
+}
+
 const WorkspaceSessionList = (props: {
   slug: Accessor<string>
   mobile?: boolean
@@ -247,6 +323,7 @@ const WorkspaceSessionList = (props: {
   children: Accessor<Map<string, string[]>>
   hasMore: Accessor<boolean>
   loadMore: () => Promise<void>
+  stats: Accessor<SessionStats>
   language: ReturnType<typeof useLanguage>
 }): JSX.Element => (
   <nav class="flex flex-col gap-1 px-2">
@@ -259,6 +336,7 @@ const WorkspaceSessionList = (props: {
         setHoverSession={props.ctx.setHoverSession}
       />
     </Show>
+    <SessionStageSummary stats={props.stats} language={props.language} />
     <Show when={props.loading()}>
       <SessionSkeleton />
     </Show>
@@ -330,6 +408,18 @@ export const SortableWorkspace = (props: {
   const booted = createMemo((prev) => prev || workspaceStore.status === "complete", false)
   const hasMore = createMemo(() => workspaceStore.sessionTotal > sessions().length)
   const busy = createMemo(() => props.ctx.isBusy(props.directory))
+  const stage = createMemo(() => {
+    if (local()) return undefined
+    busy()
+    return WorktreeState.get(props.directory)?.status
+  })
+  const stageMessage = createMemo(() => {
+    if (local()) return undefined
+    busy()
+    const value = WorktreeState.get(props.directory)
+    if (value?.status !== "failed") return undefined
+    return value.message
+  })
   const wasBusy = createMemo((prev) => prev || busy(), false)
   const loading = createMemo(() => open() && !booted() && sessions().length === 0 && !wasBusy())
   const touch = createMediaQuery("(hover: none)")
@@ -338,6 +428,41 @@ export const SortableWorkspace = (props: {
     setWorkspaceStore("limit", (limit) => (limit ?? 0) + 5)
     await globalSync.project.loadSessions(props.directory)
   }
+
+  const stats = createMemo(() => {
+    const map = children()
+    return sessions().reduce<SessionStats>(
+      (acc, session) => {
+        const ids = [session.id, ...(map.get(session.id) ?? [])]
+        const hasPermissions = ids.some((id) => (workspaceStore.permission?.[id] ?? []).length > 0)
+        const hasQuestions = ids.some((id) => (workspaceStore.question?.[id] ?? []).length > 0)
+        const isWorking =
+          !hasPermissions &&
+          !hasQuestions &&
+          ids.some((id) => {
+            const status = workspaceStore.session_status[id]
+            return status?.type === "busy" || status?.type === "retry"
+          })
+        const hasReview =
+          (session.summary?.files ?? 0) > 0 ||
+          (session.summary?.additions ?? 0) > 0 ||
+          (session.summary?.deletions ?? 0) > 0 ||
+          ids.some((id) => (workspaceStore.session_diff?.[id] ?? []).length > 0)
+
+        if (isWorking || hasPermissions || hasQuestions) {
+          acc.in_progress += 1
+          return acc
+        }
+        if (hasReview) {
+          acc.in_review += 1
+          return acc
+        }
+        acc.done += 1
+        return acc
+      },
+      { in_progress: 0, in_review: 0, done: 0 },
+    )
+  })
 
   const workspaceEditActive = createMemo(() => props.ctx.editorOpen(`workspace:${props.directory}`))
 
@@ -383,6 +508,8 @@ export const SortableWorkspace = (props: {
                       local={local}
                       busy={busy}
                       open={open}
+                      stage={stage}
+                      stageMessage={stageMessage}
                       directory={props.directory}
                       language={language}
                       branch={() => workspaceStore.vcs?.branch}
@@ -405,6 +532,8 @@ export const SortableWorkspace = (props: {
                     local={local}
                     busy={busy}
                     open={open}
+                    stage={stage}
+                    stageMessage={stageMessage}
                     directory={props.directory}
                     language={language}
                     branch={() => workspaceStore.vcs?.branch}
@@ -454,6 +583,7 @@ export const SortableWorkspace = (props: {
             children={children}
             hasMore={hasMore}
             loadMore={loadMore}
+            stats={stats}
             language={language}
           />
         </Collapsible.Content>
@@ -485,12 +615,49 @@ export const LocalWorkspace = (props: {
     await globalSync.project.loadSessions(props.project.worktree)
   }
 
+  const stats = createMemo(() => {
+    const map = children()
+    const store = workspace().store
+    return sessions().reduce<SessionStats>(
+      (acc, session) => {
+        const ids = [session.id, ...(map.get(session.id) ?? [])]
+        const hasPermissions = ids.some((id) => (store.permission?.[id] ?? []).length > 0)
+        const hasQuestions = ids.some((id) => (store.question?.[id] ?? []).length > 0)
+        const isWorking =
+          !hasPermissions &&
+          !hasQuestions &&
+          ids.some((id) => {
+            const status = store.session_status[id]
+            return status?.type === "busy" || status?.type === "retry"
+          })
+        const hasReview =
+          (session.summary?.files ?? 0) > 0 ||
+          (session.summary?.additions ?? 0) > 0 ||
+          (session.summary?.deletions ?? 0) > 0 ||
+          ids.some((id) => (store.session_diff?.[id] ?? []).length > 0)
+
+        if (isWorking || hasPermissions || hasQuestions) {
+          acc.in_progress += 1
+          return acc
+        }
+        if (hasReview) {
+          acc.in_review += 1
+          return acc
+        }
+        acc.done += 1
+        return acc
+      },
+      { in_progress: 0, in_review: 0, done: 0 },
+    )
+  })
+
   return (
     <div
       ref={(el) => props.ctx.setScrollContainerRef(el, props.mobile)}
       class="size-full flex flex-col py-2 overflow-y-auto no-scrollbar [overflow-anchor:none]"
     >
       <nav class="flex flex-col gap-1 px-2">
+        <SessionStageSummary stats={stats} language={language} />
         <Show when={loading()}>
           <SessionSkeleton />
         </Show>

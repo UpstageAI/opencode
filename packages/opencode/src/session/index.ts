@@ -237,14 +237,26 @@ export namespace Session {
         })
 
         for (const part of msg.parts) {
+          const data = { ...part }
+          if (data.type === "step-start" || data.type === "step-finish") {
+            data.snapshot = undefined
+          }
           await updatePart({
-            ...part,
+            ...data,
             id: Identifier.ascending("part"),
             messageID: cloned.id,
             sessionID: session.id,
           })
         }
       }
+
+      await setSummary({
+        sessionID: session.id,
+        summary: { additions: 0, deletions: 0, files: 0 },
+      })
+      await Storage.write(["session_diff", session.id], [])
+      Bus.publish(Event.Diff, { sessionID: session.id, diff: [] })
+
       return session
     },
   )
