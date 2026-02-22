@@ -2,6 +2,8 @@ import type { ModelMessage, Tool } from "ai"
 import { Bus } from "../bus"
 import { Identifier } from "../id/id"
 import { Plugin } from "../plugin"
+import { Instance } from "../project/instance"
+import { Question } from "../question"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { SessionStatus } from "../session/status"
@@ -12,6 +14,7 @@ import type { Provider } from "./provider"
 export namespace ClaudeCode {
   const log = Log.create({ service: "provider.claude-code" })
   const sessions = new Map<string, string>()
+  const answers = new Map<string, string>()
   const TIMEOUT = 300_000
   let subscribed = false
 
@@ -20,6 +23,7 @@ export namespace ClaudeCode {
     subscribed = true
     Bus.subscribe(Session.Event.Deleted, (evt) => {
       sessions.delete(evt.properties.info.id)
+      answers.delete(evt.properties.info.id)
     })
   }
 
@@ -61,7 +65,7 @@ export namespace ClaudeCode {
       status: "beta",
       options: {},
       headers: {},
-      release_date: "2025-01-01",
+      release_date: "",
     },
     opus: {
       id: "opus",
@@ -83,7 +87,7 @@ export namespace ClaudeCode {
       status: "beta",
       options: {},
       headers: {},
-      release_date: "2025-01-01",
+      release_date: "",
     },
     haiku: {
       id: "haiku",
@@ -105,7 +109,7 @@ export namespace ClaudeCode {
       status: "beta",
       options: {},
       headers: {},
-      release_date: "2025-01-01",
+      release_date: "",
     },
   }
 
@@ -188,6 +192,8 @@ export namespace ClaudeCode {
       "stream-json",
       "--verbose",
       "--include-partial-messages",
+      "--permission-mode",
+      "bypassPermissions",
       "--model",
       model,
     ]
@@ -200,7 +206,13 @@ export namespace ClaudeCode {
         args.push("--append-system-prompt", item)
       }
     }
-    args.push(prompt(input.messages))
+    const stored = answers.get(input.sessionID)
+    if (stored) {
+      answers.delete(input.sessionID)
+      args.push(stored)
+    } else {
+      args.push(prompt(input.messages))
+    }
 
     void input.tools
 
@@ -210,6 +222,7 @@ export namespace ClaudeCode {
     let usage: Usage | undefined
     let cost = 0
     let seen = false
+    let asked: Array<Question.Info> | undefined
 
     SessionStatus.set(input.sessionID, { type: "busy" })
 
@@ -368,10 +381,30 @@ export namespace ClaudeCode {
         }
       }
 
-      // Assistant events — track usage from cumulative messages
+      // Assistant events — track usage and detect AskUserQuestion
       if (line.type === "assistant" && typeof line.message === "object" && line.message) {
         const msg = line.message as Record<string, unknown>
         if (typeof msg.usage === "object" && msg.usage) usage = msg.usage as Usage
+        if (Array.isArray(msg.content)) {
+          for (const item of msg.content) {
+            if (typeof item !== "object" || !item) continue
+            const c = item as Record<string, unknown>
+            if (c.type !== "tool_use" || c.name !== "AskUserQuestion") continue
+            const inp = c.input as Record<string, unknown> | undefined
+            if (!inp || !Array.isArray(inp.questions)) continue
+            asked = (inp.questions as Record<string, unknown>[]).map((q) => ({
+              question: String(q.question ?? ""),
+              header: String(q.header ?? "Claude Code"),
+              options: Array.isArray(q.options)
+                ? (q.options as Record<string, unknown>[]).map((o) => ({
+                    label: String(o.label ?? ""),
+                    description: String(o.description ?? ""),
+                  }))
+                : [],
+              multiple: q.multiSelect === true,
+            }))
+          }
+        }
       }
 
       // User events — CLI-internal tool results
@@ -418,6 +451,7 @@ export namespace ClaudeCode {
       const proc = Bun.spawn(args, {
         stdout: "pipe",
         stderr: "pipe",
+        cwd: Instance.directory,
         signal,
       })
       const stderrTask = new Response(proc.stderr).text().catch(() => "")
@@ -498,13 +532,14 @@ export namespace ClaudeCode {
       }
 
       const t = tokens(usage)
-      input.assistantMessage.finish = seen ? "stop" : "error"
+      const reason = asked?.length ? "tool-calls" : seen ? "stop" : "error"
+      input.assistantMessage.finish = reason
       input.assistantMessage.cost += cost
       input.assistantMessage.tokens = t
 
       await Session.updatePart({
         id: Identifier.ascending("part"),
-        reason: seen ? "stop" : "error",
+        reason,
         snapshot: await Snapshot.track(),
         messageID: input.assistantMessage.id,
         sessionID: input.assistantMessage.sessionID,
@@ -527,6 +562,23 @@ export namespace ClaudeCode {
 
       input.assistantMessage.time.completed = Date.now()
       await Session.updateMessage(input.assistantMessage)
+
+      if (asked?.length) {
+        SessionStatus.set(input.sessionID, { type: "idle" })
+        const reply = await Question.ask({
+          sessionID: input.sessionID,
+          questions: asked,
+        })
+        const formatted = asked
+          .map((q, i) => {
+            const a = reply[i]
+            return `Q: ${q.question}\nA: ${a?.length ? a.join(", ") : "No answer"}`
+          })
+          .join("\n\n")
+        answers.set(input.sessionID, formatted)
+        return "continue"
+      }
+
       SessionStatus.set(input.sessionID, { type: "idle" })
       return "stop"
     } catch (error) {

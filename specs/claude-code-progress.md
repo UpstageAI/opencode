@@ -81,3 +81,29 @@
 
 - [x] LSP diagnostics: `claude-code.ts` — 에러 0
 - [x] CLI 레벨 smoke test: text streaming, tool calls, thinking, --resume 모두 동작 확인
+
+## Phase 4 — Web UI 통합
+
+### 상태: ✅ 구현 완료, 검증 통과
+
+### 이슈 1: Provider 연결 다이얼로그 API 키 요구
+
+- **증상**: Web UI에서 claude-code provider 연결 시 API 키 입력 폼이 표시됨
+- **원인**: `dialog-connect-provider.tsx`에서 이미 연결된 provider에 대한 예외 처리 없음
+- **수정**: `dialog-connect-provider.tsx` — 이미 `connected` 목록에 있는 provider는 API 키 입력 없이 즉시 `complete()` 호출
+- **커밋**: `0967d06a5`
+
+### 이슈 2: 모델 선택기에 claude-code 모델 미표시
+
+- **증상**: Provider 연결 성공 후에도 모델 선택 드롭다운에 Claude Code 모델이 나타나지 않음
+- **원인**: `models.tsx`의 `visible()` 함수가 `release_date` 기반 필터링 적용
+  - `release_date: "2025-01-01"` → 현재 날짜(2026-02)와 14개월 차이 → 6개월 초과 → `latestSet`에 미포함 → `return false` (숨김)
+  - `visible()` 로직: 사용자 설정 없고, `latestSet`에 없고, 유효한 날짜가 있으면 → 숨김 처리
+- **수정**: `claude-code.ts` — 3개 모델의 `release_date`를 `""` (빈 문자열)로 변경
+  - `DateTime.fromISO("")` → invalid DateTime → `date?.isValid === false` → `return true` (표시)
+  - Claude Code CLI는 실제 모델 선택을 CLI에 위임하므로 release_date 개념이 불필요
+- **검증**:
+  - [x] LSP diagnostics: `claude-code.ts` — 에러 0
+  - [x] 테스트: 11/11 통과
+  - [x] API 응답 확인: `release_date: ""` 반환
+  - [x] 서버 재시작 후 정상 동작 확인 (포트 4196)
