@@ -549,16 +549,18 @@ export namespace ClaudeCode {
         cost,
       })
 
-      const patch = await Snapshot.patch(snap)
-      if (patch.files.length) {
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: input.assistantMessage.id,
-          sessionID: input.sessionID,
-          type: "patch",
-          hash: patch.hash,
-          files: patch.files,
-        })
+      if (snap) {
+        const patch = await Snapshot.patch(snap)
+        if (patch.files.length) {
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: input.assistantMessage.id,
+            sessionID: input.sessionID,
+            type: "patch",
+            hash: patch.hash,
+            files: patch.files,
+          })
+        }
       }
 
       input.assistantMessage.time.completed = Date.now()
