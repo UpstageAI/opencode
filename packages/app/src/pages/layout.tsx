@@ -940,6 +940,21 @@ export default function Layout(props: ParentProps) {
       .then((x) => x.data)
       .catch(() => undefined)
 
+    await globalSDK.client.session
+      .update({ directory: session.directory, sessionID: session.id, time: { archived: Date.now() } })
+      .catch(() => undefined)
+    const [origStore] = globalSync.child(session.directory, { bootstrap: false })
+    if (origStore) {
+      const match = Binary.search(origStore.session, session.id, (s) => s.id)
+      if (match.found) {
+        globalSync.child(session.directory, { bootstrap: false })[1](
+          produce((draft) => {
+            draft.session.splice(match.index, 1)
+          }),
+        )
+      }
+    }
+
     if (forked) {
       navigateWithSidebarReset(`/${base64Encode(created.directory)}/session/${forked.id}`)
     } else {
@@ -1803,13 +1818,7 @@ export default function Layout(props: ParentProps) {
       if (document.visibilityState === "visible") void fetchPrs(project)
     }
     document.addEventListener("visibilitychange", onFocus)
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void fetchPrs(project)
-    }, 120_000)
-    onCleanup(() => {
-      document.removeEventListener("visibilitychange", onFocus)
-      clearInterval(interval)
-    })
+    onCleanup(() => document.removeEventListener("visibilitychange", onFocus))
   })
 
   const SidebarPanel = (panelProps: { project: LocalProject | undefined; mobile?: boolean }) => {
