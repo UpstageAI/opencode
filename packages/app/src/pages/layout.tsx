@@ -1814,11 +1814,6 @@ export default function Layout(props: ParentProps) {
       store.vcs?.branch
     }
     void fetchPrs(project)
-    const onFocus = () => {
-      if (document.visibilityState === "visible") void fetchPrs(project)
-    }
-    document.addEventListener("visibilitychange", onFocus)
-    onCleanup(() => document.removeEventListener("visibilitychange", onFocus))
   })
 
   const SidebarPanel = (panelProps: { project: LocalProject | undefined; mobile?: boolean }) => {

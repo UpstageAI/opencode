@@ -276,22 +276,18 @@ export const ExperimentalRoutes = lazy(() =>
         if (!branches) return c.json([])
         const names = branches.split(",").filter(Boolean)
         if (!names.length) return c.json([])
+        const wanted = new Set(names)
         const cwd = directory || Instance.worktree
-        const results = await Promise.all(
-          names.map(async (branch) => {
-            const result =
-              await $`gh pr list --head ${branch} --json number,state,headRefName,url,mergedAt --state all --limit 1`
-                .quiet()
-                .nothrow()
-                .cwd(cwd)
-            if (result.exitCode !== 0) return []
-            const text = new TextDecoder().decode(result.stdout).trim()
-            if (!text) return []
-            const parsed = z.array(PullRequest).safeParse(JSON.parse(text))
-            return parsed.success ? parsed.data : []
-          }),
-        )
-        return c.json(results.flat())
+        const result = await $`gh pr list --json number,state,headRefName,url,mergedAt --state all --limit 200`
+          .quiet()
+          .nothrow()
+          .cwd(cwd)
+        if (result.exitCode !== 0) return c.json([])
+        const text = new TextDecoder().decode(result.stdout).trim()
+        if (!text) return c.json([])
+        const parsed = z.array(PullRequest).safeParse(JSON.parse(text))
+        if (!parsed.success) return c.json([])
+        return c.json(parsed.data.filter((pr) => wanted.has(pr.headRefName)))
       },
     ),
 )
