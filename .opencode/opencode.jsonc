@@ -6,10 +6,6 @@
     },
   },
   "mcp": {},
-  "experimental": {
-    "hashline_edit": true,
-    "hashline_autocorrect": true,
-  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,
