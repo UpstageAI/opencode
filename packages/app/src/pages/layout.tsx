@@ -2051,6 +2051,13 @@ export default function Layout(props: ParentProps) {
                                     const branch = entry.workspaceStore.vcs?.branch
                                     return branch ? prByBranch()[branch]?.number : undefined
                                   })()}
+                                  isWorking={(() => {
+                                    const ids = [entry.session.id, ...(entry.children.get(entry.session.id) ?? [])]
+                                    return ids.some((id) => {
+                                      const status = entry.workspaceStore.session_status[id]
+                                      return status?.type === "busy" || status?.type === "retry"
+                                    })
+                                  })()}
                                   children={entry.children}
                                   mobile={panelProps.mobile}
                                   shortcutIndex={shortcutIndex()[entry.session.id]}

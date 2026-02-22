@@ -9,6 +9,7 @@ import { HoverCard } from "@opencode-ai/ui/hover-card"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { MessageNav } from "@opencode-ai/ui/message-nav"
+import { Spinner } from "@opencode-ai/ui/spinner"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { getFilename } from "@opencode-ai/util/path"
 import { type Message, type Session, type TextPart, type UserMessage } from "@opencode-ai/sdk/v2/client"
@@ -57,6 +58,7 @@ export type SessionItemProps = {
   slug: string
   branch?: string
   prNumber?: number
+  isWorking?: boolean
   shortcutIndex?: number
   mobile?: boolean
   dense?: boolean
@@ -79,6 +81,7 @@ const SessionRow = (props: {
   slug: string
   branch?: string
   prNumber?: number
+  isWorking?: boolean
   provider: Accessor<string | undefined>
   shortcutIndex?: number
   mobile?: boolean
@@ -120,12 +123,21 @@ const SessionRow = (props: {
         props.clearHoverProjectSoon()
       }}
     >
-      <div
-        class="mt-0.5 shrink-0 size-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
-        style={{ "background-color": props.tint() ?? "var(--text-interactive-base)" }}
+      <Show
+        when={!props.isWorking}
+        fallback={
+          <div class="mt-0.5 shrink-0 size-5 flex items-center justify-center">
+            <Spinner class="size-4" />
+          </div>
+        }
       >
-        {avatarLabel()}
-      </div>
+        <div
+          class="mt-0.5 shrink-0 size-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
+          style={{ "background-color": props.tint() ?? "var(--text-interactive-base)" }}
+        >
+          {avatarLabel()}
+        </div>
+      </Show>
       <div class="min-w-0 flex-1 flex flex-col gap-0.5">
         <div class="flex items-center gap-2 min-w-0">
           <span class="text-13-regular text-text-strong grow min-w-0 truncate">{props.session.title}</span>
@@ -294,6 +306,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       slug={props.slug}
       branch={props.branch}
       prNumber={props.prNumber}
+      isWorking={props.isWorking}
       provider={provider}
       shortcutIndex={props.shortcutIndex}
       mobile={props.mobile}
