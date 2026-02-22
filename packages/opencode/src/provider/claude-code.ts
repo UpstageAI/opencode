@@ -7,6 +7,7 @@ import { Question } from "../question"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { SessionStatus } from "../session/status"
+import { SessionSummary } from "../session/summary"
 import { Snapshot } from "../snapshot"
 import { Log } from "../util/log"
 import type { Provider } from "./provider"
@@ -562,6 +563,11 @@ export namespace ClaudeCode {
 
       input.assistantMessage.time.completed = Date.now()
       await Session.updateMessage(input.assistantMessage)
+
+      SessionSummary.summarize({
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.parentID,
+      })
 
       if (asked?.length) {
         SessionStatus.set(input.sessionID, { type: "idle" })
