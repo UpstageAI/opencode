@@ -56,6 +56,28 @@ test("loads JSON config file", async () => {
   })
 })
 
+test("parses experimental.hashline_edit and experimental.hashline_autocorrect", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        experimental: {
+          hashline_edit: true,
+          hashline_autocorrect: true,
+        },
+      })
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.experimental?.hashline_edit).toBe(true)
+      expect(config.experimental?.hashline_autocorrect).toBe(true)
+    },
+  })
+})
+
 test("loads JSONC config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

@@ -6,6 +6,7 @@ import { Filesystem } from "../../src/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 import { PermissionNext } from "../../src/permission/next"
 import { Agent } from "../../src/agent/agent"
+import { hashlineLine } from "../../src/tool/hashline"
 
 const FIXTURES_DIR = path.join(import.meta.dir, "fixtures")
 
@@ -438,6 +439,50 @@ root_type Monster;`
         expect(result.attachments).toBeUndefined()
         expect(result.output).toContain("namespace MyGame")
         expect(result.output).toContain("table Monster")
+      },
+    })
+  })
+})
+
+describe("tool.read hashline output", () => {
+  test("returns LINE#ID prefixes when hashline mode is enabled", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        experimental: {
+          hashline_edit: true,
+        },
+      },
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "hashline.txt"), "foo\nbar")
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "hashline.txt") }, ctx)
+        expect(result.output).toContain(hashlineLine(1, "foo"))
+        expect(result.output).toContain(hashlineLine(2, "bar"))
+        expect(result.output).not.toContain("1: foo")
+      },
+    })
+  })
+
+  test("keeps legacy line prefixes when hashline mode is disabled", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "legacy.txt"), "foo\nbar")
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "legacy.txt") }, ctx)
+        expect(result.output).toContain("1: foo")
+        expect(result.output).toContain("2: bar")
       },
     })
   })
