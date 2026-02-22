@@ -194,7 +194,7 @@ export const ReadTool = Tool.define("read", {
       throw new Error(`Offset ${offset} is out of range for this file (${lines} lines)`)
     }
 
-    const useHashline = (await Config.get()).experimental?.hashline_edit === true
+    const useHashline = (await Config.get()).experimental?.hashline_edit !== false
     const content = raw.map((line, index) => {
       const lineNumber = index + offset
       if (useHashline) return `${hashlineRef(lineNumber, full[index])}:${line}`

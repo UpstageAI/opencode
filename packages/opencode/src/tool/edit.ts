@@ -467,9 +467,9 @@ export const EditTool = Tool.define("edit", {
     }
 
     const config = await Config.get()
-    if (config.experimental?.hashline_edit !== true) {
+    if (config.experimental?.hashline_edit === false) {
       throw new Error(
-        "Hashline edit payload is disabled. Enable experimental.hashline_edit to use hashline operations.",
+        "Hashline edit payload is disabled. Set experimental.hashline_edit to true to use hashline operations.",
       )
     }
 
@@ -483,7 +483,7 @@ export const EditTool = Tool.define("edit", {
     return executeHashline(
       hashlineParams,
       ctx,
-      config.experimental?.hashline_autocorrect === true || Bun.env.OPENCODE_HL_AUTOCORRECT === "1",
+      config.experimental?.hashline_autocorrect !== false || Bun.env.OPENCODE_HL_AUTOCORRECT === "1",
     )
   },
 })

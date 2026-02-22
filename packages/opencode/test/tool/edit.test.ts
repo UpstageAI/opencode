@@ -744,6 +744,11 @@ describe("tool.edit", () => {
 
     test("rejects hashline payload when experimental mode is disabled", async () => {
       await using tmp = await tmpdir({
+        config: {
+          experimental: {
+            hashline_edit: false,
+          },
+        },
         init: async (dir) => {
           await fs.writeFile(path.join(dir, "file.txt"), "a", "utf-8")
         },

@@ -7,14 +7,8 @@ describe("tool.registry hashline routing", () => {
   test.each([
     { providerID: "openai", modelID: "gpt-5" },
     { providerID: "anthropic", modelID: "claude-3-7-sonnet" },
-  ])("disables apply_patch and enables edit when experimental hashline is on (%o)", async (model) => {
-    await using tmp = await tmpdir({
-      config: {
-        experimental: {
-          hashline_edit: true,
-        },
-      },
-    })
+  ])("disables apply_patch and enables edit by default (%o)", async (model) => {
+    await using tmp = await tmpdir()
 
     await Instance.provide({
       directory: tmp.path,
@@ -28,8 +22,14 @@ describe("tool.registry hashline routing", () => {
     })
   })
 
-  test("keeps existing GPT apply_patch routing when experimental hashline is off", async () => {
-    await using tmp = await tmpdir()
+  test("keeps existing GPT apply_patch routing when hashline is explicitly disabled", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        experimental: {
+          hashline_edit: false,
+        },
+      },
+    })
 
     await Instance.provide({
       directory: tmp.path,
@@ -45,8 +45,14 @@ describe("tool.registry hashline routing", () => {
     })
   })
 
-  test("keeps existing non-GPT routing when experimental hashline is off", async () => {
-    await using tmp = await tmpdir()
+  test("keeps existing non-GPT routing when hashline is explicitly disabled", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        experimental: {
+          hashline_edit: false,
+        },
+      },
+    })
 
     await Instance.provide({
       directory: tmp.path,

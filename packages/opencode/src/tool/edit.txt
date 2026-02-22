@@ -12,11 +12,12 @@ Legacy schema (always supported):
 - The edit fails if `oldString` matches multiple locations and `replaceAll` is not true.
 - Use `replaceAll: true` for global replacements.
 
-Hashline schema (requires `experimental.hashline_edit: true`):
+Hashline schema (default behavior):
 - `{ filePath, edits, delete?, rename? }`
 - Do not mix legacy fields (`oldString/newString/replaceAll`) with hashline fields (`edits/delete/rename`) in one call.
 - Use strict anchor references from `Read` output: `LINE#ID`.
-- Optional cleanup behavior can be enabled with `experimental.hashline_autocorrect: true`.
+- Hashline mode can be turned off with `experimental.hashline_edit: false`.
+- Autocorrect cleanup is on by default and can be turned off with `experimental.hashline_autocorrect: false`.
 - When `Read` returns `LINE#ID:<content>`, prefer hashline operations.
 - Operations:
   - `set_line { line, text }`

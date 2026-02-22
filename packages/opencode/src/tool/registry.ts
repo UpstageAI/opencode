@@ -143,7 +143,7 @@ export namespace ToolRegistry {
             return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
           }
 
-          if (config.experimental?.hashline_edit === true) {
+          if (config.experimental?.hashline_edit !== false) {
             if (t.id === "apply_patch") return false
             return true
           }
