@@ -885,6 +885,64 @@ export default function Layout(props: ParentProps) {
     }
   }
 
+  async function deleteSession(session: Session) {
+    const [store, setStore] = globalSync.child(session.directory)
+    const sessions = sortedRootSessions(store, Date.now())
+    const index = sessions.findIndex((s) => s.id === session.id)
+    const nextSession = sessions[index + 1] ?? sessions[index - 1]
+    const removed = new Set<string>([session.id])
+
+    const byParent = new Map<string, string[]>()
+    for (const item of store.session) {
+      const parentID = item.parentID
+      if (!parentID) continue
+      const existing = byParent.get(parentID)
+      if (existing) {
+        existing.push(item.id)
+        continue
+      }
+      byParent.set(parentID, [item.id])
+    }
+
+    const stack = [session.id]
+    while (stack.length) {
+      const parentID = stack.pop()
+      if (!parentID) continue
+      const children = byParent.get(parentID)
+      if (!children) continue
+      for (const child of children) {
+        if (removed.has(child)) continue
+        removed.add(child)
+        stack.push(child)
+      }
+    }
+
+    const result = await globalSDK.client.session
+      .delete({ directory: session.directory, sessionID: session.id })
+      .then((x) => x.data)
+      .catch((err) => {
+        showToast({
+          title: language.t("session.delete.failed.title"),
+          description: errorMessage(err, language.t("common.requestFailed")),
+        })
+        return false
+      })
+    if (!result) return
+
+    setStore(
+      produce((draft) => {
+        draft.session = draft.session.filter((item) => !removed.has(item.id))
+      }),
+    )
+
+    if (!params.id || !removed.has(params.id)) return
+    if (nextSession) {
+      navigate(`/${params.dir}/session/${nextSession.id}`)
+      return
+    }
+    navigate(`/${params.dir}/session`)
+  }
+
   async function continueOnNewBranch(session: Session) {
     const project = currentProject()
     if (!project) return
@@ -1488,6 +1546,35 @@ export default function Layout(props: ParentProps) {
     )
   }
 
+  function DialogDeleteSession(props: { session: Session }) {
+    return (
+      <Dialog title={language.t("session.delete.title")} fit>
+        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+          <div class="flex flex-col gap-1">
+            <span class="text-14-regular text-text-strong">
+              {language.t("session.delete.confirm", { name: props.session.title })}
+            </span>
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button variant="ghost" size="large" onClick={() => dialog.close()}>
+              {language.t("common.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="large"
+              onClick={() => {
+                dialog.close()
+                void deleteSession(props.session)
+              }}
+            >
+              {language.t("session.delete.button")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
   function DialogResetWorkspace(props: { root: string; directory: string }) {
     const name = createMemo(() => getFilename(props.directory))
     const [state, setState] = createStore({
@@ -1724,6 +1811,11 @@ export default function Layout(props: ParentProps) {
     return Promise.resolve()
   }
 
+  const confirmDelete = (session: Session) => {
+    dialog.show(() => <DialogDeleteSession session={session} />)
+    return Promise.resolve()
+  }
+
   const workspaceSidebarCtx: WorkspaceSidebarContext = {
     currentDir,
     sidebarExpanded,
@@ -1734,6 +1826,7 @@ export default function Layout(props: ParentProps) {
     clearHoverProjectSoon,
     prefetchSession,
     archiveSession: confirmArchive,
+    deleteSession: confirmDelete,
     workspaceName,
     renameWorkspace,
     editorOpen,
@@ -1779,6 +1872,7 @@ export default function Layout(props: ParentProps) {
       clearHoverProjectSoon,
       prefetchSession,
       archiveSession: confirmArchive,
+      deleteSession: confirmDelete,
     },
     setHoverSession,
   }
